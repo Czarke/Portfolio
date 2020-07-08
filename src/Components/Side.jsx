@@ -84,7 +84,7 @@ function Side() {
                         <ul className="list-unstyled">
                             <li className="item">
                                 <span className="title"><strong>English:</strong></span>
-                                <span className="level"> Native Speaker <br className="visible-xs"/><i className="fas fa-star"></i> <i className="fas fa-star"></i> <i className="fas fa-star"></i> <i className="fas fa-star"></i> <i className="fas fa-star"></i> </span>
+                                <span className="level"> Native Proficiency <br className="visible-xs"/><i className="fas fa-star"></i> <i className="fas fa-star"></i> <i className="fas fa-star"></i> <i className="fas fa-star"></i> <i className="fas fa-star"></i> </span>
                             </li>
                             <li className="item">
                                 <span className="title"><strong>Japanese:</strong></span>

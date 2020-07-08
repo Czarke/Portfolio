@@ -7,17 +7,20 @@ return (
                         <h2 className="heading">Work Experience</h2>
                         <div className="content">
                             <div className="item">
-                                <h3 className="title">Co-Founder & Lead Developer - <span className="place"><a href="#">Startup Hub</a></span> <span className="year">(2014 - Present)</span></h3>
-                                <p>Aenean leo ligula, porttitor eu, consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in, viverra quis, feugiat a, tellus. Phasellus viverra nulla ut metus varius laoreet. Donec vitae sapien ut libero venenatis faucibus. Nullam quis ante. Etiam sit amet orci eget eros faucibus tincidunt.</p>
+                                <h3 className="title">IT Service Desk Technician - <span className="place"><a href="#">Pharmaca</a></span> <span className="year">(2020 - Present)</span></h3>
+                                <ul>
+                                    <li>Communicating with pharmacy and retail staff in 35 stores across the country to resolve issues with various types of hardware and software resulting in reliable store operations</li>
+                                    <li>Used ticket volume metrics to determine problem pieces of equipment and presented data to management to instigate budget for replacements and improve experience for end users</li>
+                                    <li>Collaborated with accounting and development teams to create more efficient databasing systems resulting in improved workflow for stores</li>
+                                </ul>
                             </div>
                             <div className="item">
-                                <h3 className="title">Software Engineer - <span className="place"><a href="#">Google</a></span> <span className="year">(2013 - 2014)</span></h3>
-                                <p>Vivamus a tortor eu turpis pharetra consequat quis non metus. Aliquam aliquam, orci eu suscipit pellentesque, mauris dui tincidunt enim. Sed fringilla mauris sit amet nibh. Donec sodales sagittis magna.</p>
-                            </div>
-                            
-                            <div className="item">
-                                <h3 className="title">Software Engineer - <span className="place"><a href="#">eBay</a></span> <span className="year">(2012 - 2013)</span></h3>
-                                <p>Maecenas tempus, tellus eget condimentum rhoncus, sem quam semper libero, sit amet adipiscing sem neque sed ipsum.</p>
+                                <h3 className="title">Lead Student Technician - <span className="place"><a href="#">University of Colorado Boulder</a></span> <span className="year">(2016 - 2019)</span></h3>
+                                <ul>
+                                    <li>Represented opinions and needs of part time student technicians in weekly staff meetings to promote positive cultural change in the office</li>
+                                    <li>Communicated with university staff about ticket resolution to ensure that the clients expectations for our services were met or exceeded</li>
+                                    <li>Onboarded and trained new student technicians via shadowing and technical tests</li>
+                                </ul>
                             </div>
                             
                         </div>  

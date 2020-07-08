@@ -17,9 +17,6 @@ body {
 
 #container-wrap {
   display:flex;
-  flex-direction:row;
-  margin:auto;
-  flex-shrink: 3;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -141,7 +138,7 @@ a.dotted-link:hover {
 }
 
 .header .profile-image {
-  margin-right: 30px;
+  margin-right: 340px;
 }
 
 .header .profile-content .name {
