@@ -10,7 +10,6 @@ function Side() {
                         <ul className="list-unstyled">
                             <li><i className="fas fa-map-marker-alt"></i><span className="sr-only">Location:</span>Boulder, CO</li>
                             <li><i className="fas fa-envelope"></i><span className="sr-only">Email:</span><a href="#">slpatterson97@gmail.com</a></li>
-                            <li><i className="fas fa-link"></i><span className="sr-only">Website:</span><a href="#">https://seanpatterson.me</a></li>
                         </ul>
                     </div>
                 </div>
@@ -42,7 +41,7 @@ function Side() {
                             </div>
                             
                             <div className="item">
-                                <h3 className="level-title">HTML5, CSS3, SASS &amp; LESS<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Moderate</span></h3>
+                                <h3 className="level-title">HTML5 & CSS3<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Moderate</span></h3>
                                 <div className="level-bar">
                                     <div className="level-bar-inner" data-level="60%">
                                     </div>                                      
@@ -52,7 +51,7 @@ function Side() {
                             <div className="item">
                                 <h3 className="level-title">GraphQL<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Moderate</span></h3>
                                 <div className="level-bar">
-                                    <div className="level-bar-inner" data-level="70%">
+                                <div className="level-bar-inner" data-level="50%">
                                     </div>                                      
                                 </div>
                             </div>
@@ -101,10 +100,10 @@ function Side() {
                     <h2 className="heading">Favourite coding music</h2>
                     <div className="content">
                         <ul className="list-unstyled">
-                            <li><i className="fas fa-headphones"></i> <a href="#">Etiam hendrerit urna nunc</a></li>
-                            <li><i className="fas fa-headphones"></i> <a href="#">Ut sollicitudin in mauris non auctor</a></li>
-                            <li><i className="fas fa-headphones"></i> <a href="#">Etiam hendrerit urna nunc</a></li>
-                            <li><i className="fas fa-headphones"></i> <a href="#">Duis et felis bibendum</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/50JJSqHUf2RQ9xsHs0KMHg">Jon Bellion</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/3MZsBdqDrRTJihTHQrO6Dq">Joji</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/7nqOGRxlXj7N2JYbgNEjYH">SEVENTEEN</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/1snhtMLeb2DYoMOcVbb8iB">Kenshi Yonezu</a></li>
                         </ul>
                     </div>
                 </div>

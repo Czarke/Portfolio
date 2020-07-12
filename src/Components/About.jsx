@@ -6,7 +6,7 @@ return (
     <div className="section-inner shadow-sm rounded">
             <h2 className="heading">About Me</h2>
                 <div className="content">
-                    <p>Write a brief intro about yourself. It's a good idea to include your personal interests and hobbies as well. Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec. Commodo ligula eget dolor. Aenean massa.</p>
+                    <p>Hello, I'm Sean. I'm a Computer Science graduate with a passion for developing web and python apps. I'm currently working as an IT Service Desk Technician supporting 34 retail pharmacies across the U.S. My goal is to find a position that allows me to expand my knowledge as a developer and create products that are enjoyable and effective to use. </p>
                          
                 </div>
     </div>            
