@@ -445,7 +445,7 @@ a.dotted-link:hover {
 
 .skills .skillset .level-title .level-label {
   color: #ccd1d6;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 400;
   font-family: "Lato", arial, sans-serif;
   position: absolute;
@@ -468,6 +468,11 @@ a.dotted-link:hover {
   position: relative;
   top: -1px;
 }
+
+.html {font-size: 12px; text-align: right; height: 15px; width: 55%; background: #66cb8c}
+.javascript {font-size: 12px; text-align: right; height: 15px; width: 65%; background: #66cb8c}
+.python {font-size: 12px; text-align: right; height: 15px; width: 85%; background: #66cb8c}
+.graphql {font-size: 12px; text-align: right; height: 15px; width: 60%; background: #66cb8c}
 
 /* Testimonials section */
 .testimonials .item {

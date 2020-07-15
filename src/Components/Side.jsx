@@ -27,23 +27,22 @@ function Side() {
                             <div className="item">
                                 <h3 className="level-title">Python<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Experienced</span></h3>
                                 <div className="level-bar">
-                                    <div className="level-bar-inner" data-level="85%">
+                                    <div className="python" data-level="85%">
                                     </div>                                      
                                 </div>
                             </div>
                             
                             <div className="item">
-                                <h3 className="level-title">Javascript (React)<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Experienced</span></h3>
+                                <h3 className="level-title">Javascript (React)<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Moderate</span></h3>
                                 <div className="level-bar">
-                                    <div className="level-bar-inner" data-level="85%">
-                                    </div>                                      
+                                    <div className="javascript" data-level="85%"></div>                                      
                                 </div>
                             </div>
                             
                             <div className="item">
                                 <h3 className="level-title">HTML5 & CSS3<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Moderate</span></h3>
                                 <div className="level-bar">
-                                    <div className="level-bar-inner" data-level="60%">
+                                    <div className="html" data-level="60%">
                                     </div>                                      
                                 </div>
                             </div>
@@ -51,7 +50,7 @@ function Side() {
                             <div className="item">
                                 <h3 className="level-title">GraphQL<span className="level-label" data-toggle="tooltip" data-placement="left" data-animation="true" title="You can use the tooltip to explain more about your skill level..."><i className="fas fa-info-circle"></i>Moderate</span></h3>
                                 <div className="level-bar">
-                                <div className="level-bar-inner" data-level="50%">
+                                <div className="graphql" data-level="50%">
                                     </div>                                      
                                 </div>
                             </div>
@@ -122,18 +121,7 @@ function Side() {
                             
                         </ul>
                         
-                        <hr/>
-                        
-                            <p className="pt-2">This Bootstrap 4 portfolio template is handcrafted by UX designer <a href="https://twitter.com/3rdwave_themes" target="_blank">Xiaoying Riley</a> at <a href="https://themes.3rdwavemedia.com/" target="_blank">3rd Wave Media</a> for developers and is <strong>FREE</strong> as long as you keep the footer attribution link.</p>
-                            <p>If you’d like to <strong>use this template without the attribution link</strong>, you can <a href="https://themes.3rdwavemedia.com/bootstrap-templates/resume/free-bootstrap-portfolio-theme-for-web-developers/" target="_blank">buy the commercial license</a>.</p>
-                            
-                            <a className="btn btn-cta-primary btn-download" href="https://themes.3rdwavemedia.com/bootstrap-templates/resume/free-bootstrap-portfolio-theme-for-web-developers/" target="_blank"><i className="fas fa-download"></i> I want to download</a>
-                        <hr/>
-                        <h5 className="subheading pt-3">Want more free Bootstrap themes and templates?</h5>
-                        <p>Check out our <a href="https://themes.3rdwavemedia.com/bootstrap-templates/free/">collection of free themes and templates.</a></p>
-                        <p>Follow <a href="https://twitter.com/3rdwave_themes" target="_blank">Xiaoying</a> on twitter so you don't miss any future freebies!</p> 
-                        
-                        <a className="btn btn-cta-secondary btn-follow" href="https://twitter.com/3rdwave_themes" target="_blank"><i className="fab fa-twitter"></i> Follow on twitter</a>
+                       
                         
                     </div>
                 </div>
