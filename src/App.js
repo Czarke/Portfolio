@@ -12,31 +12,18 @@ import Side from './Components/Side.jsx'
 function App() {
   return (
     <div className="App">
-      {/* <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header> */}
-      
-      <div id="container-wrap">
-      <div id="main">
-        <Header></Header>
-        <About></About>
-        <Latest></Latest>
-        <Experience></Experience> 
-      </div>
+      <Header></Header>
+      <div id="container-wrap" style={{
+        padding: '2rem'
+      }}>
+        <div id="main">
+          <About></About>
+          <Latest></Latest>
+          <Experience></Experience> 
+        </div>
       <Side></Side>
     </div>
-      
+
       
 
       
