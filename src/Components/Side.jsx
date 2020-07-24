@@ -9,7 +9,7 @@ function Side() {
                     <div className="content">
                         <ul className="list-unstyled">
                             <li><i className="fas fa-map-marker-alt"></i><span className="sr-only">Location:</span>Boulder, CO</li>
-                            <li><i className="fas fa-envelope"></i><span className="sr-only">Email:</span><a href="#">slpatterson97@gmail.com</a></li>
+                            <li><i className="fas fa-envelope"></i><span className="sr-only">Email:</span>slpatterson97@gmail.com</li>
                         </ul>
                     </div>
                 </div>
@@ -113,11 +113,11 @@ function Side() {
                     <h2 className="heading">Credits</h2>
                     <div className="content">
                         <ul className="list-unstyled pb-2">
-                            <li><a href="https://getbootstrap.com/" target="_blank"><i className="fas fa-external-link-alt"></i>Bootstrap</a></li>
-                            <li><a href="https://fortawesome.github.io/Font-Awesome/" target="_blank"><i className="fas fa-external-link-alt"></i>FontAwesome</a></li>
-                            <li><a href="https://jquery.com/" target="_blank"><i className="fas fa-external-link-alt"></i>jQuery</a></li>
+                            <li><a href="https://getbootstrap.com/" target="_blank" rel="noopener no referrer"><i className="fas fa-external-link-alt"></i>Bootstrap</a></li>
+                            <li><a href="https://fortawesome.github.io/Font-Awesome/" target="_blank" rel="noopener no referrer"><i className="fas fa-external-link-alt"></i>FontAwesome</a></li>
+                            <li><a href="https://jquery.com/" target="_blank" rel="noopener no referrer"><i className="fas fa-external-link-alt"></i>jQuery</a></li>
                             
-                            <li><a href="https://github.com/sdepold/jquery-rss" target="_blank"><i className="fas fa-external-link-alt"></i>jQuery RSS</a></li>
+                            <li><a href="https://github.com/sdepold/jquery-rss" target="_blank" rel="noopener no referrer"><i className="fas fa-external-link-alt"></i>jQuery RSS</a></li>
                             
                         </ul>
                         
