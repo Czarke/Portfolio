@@ -23,6 +23,24 @@ return (
                                 </ul>
                             </div>
                             
+                        </div>
+                        <h2 className="heading">Affiliations</h2>
+                        <div className="content">
+                            <div className="item">
+                                <h3 className="title text-left">CU Powerlifting President -  <span className="place"><a href="https://coloradopowerlifting.weebly.com/">University of Colorado Boulder</a></span> <span className="year">(2016 - 2018)</span></h3>
+                                <ul className="text-left">
+                                    <li>Organized guest coach presentations, volunteered at local competitions, and communicated with school administration to authorize thousands in funding and reserve lecture halls for club events</li>
+                                    <li>Coordinated with local competition organizers to make a bid at hosting the USAPL national collegiate competition in 2019</li>
+                                </ul>
+                            </div>
+                            <div className="item">
+                                <h3 className="title text-left">AIU Kanto Team International Student Leader - <span className="place"><a href="https://www.youtube.com/watch?v=PWwU-wJ4aOQ&feature=youtu.be&fbclid=IwAR322o99lUGJwe4g0uOfZyoK3uJ8Pc7jVRmUloFUe5EOXppTDTS9tHk0USw">Akita International University</a></span> <span className="year">(2019)</span></h3>
+                                <ul className="text-left">
+                                    <li>Promoted skill progression with a team-player mentality as the team prepared for performance at the Kanto Matsuri(festival) in Akita</li>
+                                    <li>Bridged long standing Japanese team members and foreign students in daily meetings by organizing and notarizing practice advice to individual members and the team as a whole</li>
+                                </ul>
+                            </div>
+                            
                         </div>  
                     </div>               
                 </section>

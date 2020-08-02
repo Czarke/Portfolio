@@ -6,7 +6,7 @@ return (
     <div className="section-inner shadow-sm rounded">
             <h2 className="heading">About Me</h2>
                 <div className="content">
-                    <p>Hello, I'm Sean. I'm a Computer Science graduate with a passion for developing web and python apps. I'm currently working as an IT Service Desk Technician supporting 34 retail pharmacies across the U.S. My goal is to find a position that allows me to expand my knowledge as a developer and create products that are enjoyable and effective to use. </p>
+                    <p>Sean is a Computer Science graduate actively looking for his first role in the software space. His interests lie in creating scalable apps in Javascript and Python. His goal is to find a position that allows him to actively learn and create meaningful products. When he isn't writing code he is taking photos, lifting weights, studying Japanese, or playing video games.</p>
                          
                 </div>
     </div>            

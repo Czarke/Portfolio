@@ -61,7 +61,7 @@ function Side() {
             
             <aside className="education aside section">
                 <div className="section-inner shadow-sm rounded">
-                    <h2 className="heading">Education</h2>
+                    <h2 className="heading">Education & Certification</h2>
                     <div className="content">
                         <div className="item">                      
                             <h3 className="title"><i className="fas fa-graduation-cap"></i> BA Computer Science</h3>
@@ -70,6 +70,10 @@ function Side() {
                         <div className="item">
                             <h3 className="title"><i className="fas fa-graduation-cap"></i> Study Abroad</h3>
                             <h4 className="university">Akita International University <span className="year">(2019)</span></h4>
+                        </div>
+                        <div className="item">
+                            <h3 className="title"><i className="fas fa-graduation-cap"></i> Certified Associate in Project Management</h3>
+                            <h4 className="university">Project Management Institution <span className="year">(Nov 2019)</span></h4>
                         </div>
                     </div>
                 </div>
