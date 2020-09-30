@@ -75,6 +75,10 @@ function Side() {
                             <h3 className="title"><i className="fas fa-graduation-cap"></i> Certified Associate in Project Management</h3>
                             <h4 className="university">Project Management Institution <span className="year">(Nov 2019)</span></h4>
                         </div>
+                        <div className="item">
+                            <h3 className="title"><i className="fas fa-graduation-cap"></i> Certified Cloud Practitioner</h3>
+                            <h4 className="university">Amazon Web Services <span className="year">(Aug 2020)</span></h4>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -107,6 +111,20 @@ function Side() {
                             <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/3MZsBdqDrRTJihTHQrO6Dq">Joji</a></li>
                             <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/7nqOGRxlXj7N2JYbgNEjYH">SEVENTEEN</a></li>
                             <li><i className="fas fa-headphones"></i> <a href="https://open.spotify.com/artist/1snhtMLeb2DYoMOcVbb8iB">Kenshi Yonezu</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </aside>
+
+            <aside className="list music aside section">
+                <div className="section-inner shadow-sm rounded">
+                    <h2 className="heading">Currently reading</h2>
+                    <div className="content">
+                        <ul className="list-unstyled">
+                            <li><i className="fas fa-headphones"></i> <a href="https://www.amazon.com/Tattooist-Auschwitz-Novel-Heather-Morris/dp/0062797158">The Tattooist of Auschwitz - Heather Morris</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://www.amazon.com/Brief-Wondrous-Life-Oscar-Wao/dp/1594483299/ref=sr_1_1?crid=32FHEZ8QQF3SE&dchild=1&keywords=the+brief+wondrous+life+of+oscar+wao&qid=1599961297&s=books&sprefix=the+brief%2Cstripbooks%2C183&sr=1-1">The Brief Wondrous Life of Oscar Wao - Junot Díaz</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://www.amazon.com/Kite-Runner-Khaled-Hosseini/dp/159463193X/ref=sr_1_1?dchild=1&keywords=the+kite+runner&qid=1599961325&s=books&sr=1-1">The Kite Runner - Khaled Hosseini</a></li>
+                            <li><i className="fas fa-headphones"></i> <a href="https://www.amazon.com/12-Rules-Life-Antidote-Chaos/dp/0345816021">12 Rules for Life: An Antidote to Chaos - Jordan Peterson</a></li>
                         </ul>
                     </div>
                 </div>

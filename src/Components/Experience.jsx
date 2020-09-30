@@ -7,7 +7,7 @@ return (
                         <h2 className="heading">Work Experience</h2>
                         <div className="content">
                             <div className="item">
-                                <h3 className="title text-left">IT Service Desk Technician - <span className="place"><a href="https://www.pharmaca.com/">Pharmaca</a></span> <span className="year">(2020 - Present)</span></h3>
+                                <h3 className="title text-left">IT Service Desk Technician - <span className="place"><a href="https://www.pharmaca.com/">Pharmaca Integrative Pharmacy</a></span> <span className="year">(2020 - Present)</span></h3>
                                 <ul className="text-left">
                                     <li>Communicating with pharmacy and retail staff in 35 stores across the country to resolve issues with various types of hardware and software resulting in reliable store operations</li>
                                     <li>Used ticket volume metrics to determine problem pieces of equipment and presented data to management to instigate budget for replacements and improve experience for end users</li>
