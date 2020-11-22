@@ -28,9 +28,8 @@ return (
                                 <img className="img-fluid project-image rounded shadow-sm" src="assets/images/projects/project-1.png" alt="project name" />
                                 </a>
                                 <div className="desc col-md-8 col-12">
-                                    <h3 className="title"><a href="https://github.com/Czarke/Kantogram" target="_blank" rel="noopener noreferrer">Kantogram - Social media for Kanto performers</a></h3>
-                                    <p className="mb-2">This app is inspired by Instagram, with a twist that it's meant for fellow Kanto performers to share their teams and experiences. It is developed in React with typescript. It uses Express to connect the client side to a GraphQL server.</p>
-                                    <p><a className="more-link" href="https://github.com/Czarke/Kantogram" target="_blank" rel="noopener noreferrer"><i className="fas fa-external-link-alt"></i>Github repo</a></p>
+                                    <h3 className="title"><a href="https://github.com/Czarke/Kantogram" target="_blank" rel="noopener noreferrer">Kantogram - Social media for Kanto performers (currently rewriting)</a></h3>
+                                    <p className="mb-2">This app is inspired by Instagram, with a twist that it's meant for fellow Kanto performers to share their teams and experiences. It is developed in React with typescript. It uses Express to connect the client side to a GraphQL server. I am currently rewriting this using GatsbyJS</p>
                                 </div>                       
                             </div>
                             
