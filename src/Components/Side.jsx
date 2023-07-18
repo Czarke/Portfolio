@@ -8,8 +8,10 @@ function Side() {
                     <h2 className="heading sr-only">Basic Information</h2>
                     <div className="content">
                         <ul className="list-unstyled">
-                            <li><i className="fas fa-map-marker-alt"></i><span className="sr-only">Location:</span>Boulder, CO</li>
+                            <li><i className="fas fa-map-marker-alt"></i><span className="sr-only">Location:</span>Denver, CO</li>
                             <li><i className="fas fa-envelope"></i><span className="sr-only">Email:</span>slpatterson97@gmail.com</li>
+                            <li><i className="fas fa-envelope"></i><span className="sr-only">Github:</span><a href="https://github.com/Czarke"></a>Github</li>
+                            <li><i className="fas fa-envelope"></i><span className="sr-only">LinkedIn:</span><a href="https://www.linkedin.com/in/seanpattersoncu/"></a>LinkedIn</li>
                         </ul>
                     </div>
                 </div>

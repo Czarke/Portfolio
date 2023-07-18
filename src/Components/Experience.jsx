@@ -6,8 +6,15 @@ return (
                     <div className="section-inner shadow-sm rounded">
                         <h2 className="heading">Work Experience</h2>
                         <div className="content">
+                        <div className="item">
+                                <h3 className="title text-left">Computer Systems Analyst - <span className="place"><a href="https://www.lockheedmartin.com/">Lockheed Martin</a></span> <span className="year">(2021 - Present)</span></h3>
+                                <ul className="text-left">
+                                    <li>Reworked documentation processes and organization via Confluence/JIRA to promote knowledge pass and increase effectiveness of support</li>
+                                    <li>Provided computer support to 64 vice presidents across LM Space along with their executive assistants in office, remotely, and on travel for executive events across the country</li>
+                                </ul>
+                            </div>
                             <div className="item">
-                                <h3 className="title text-left">IT Service Desk Technician - <span className="place"><a href="https://www.pharmaca.com/">Pharmaca Integrative Pharmacy</a></span> <span className="year">(2020 - Present)</span></h3>
+                                <h3 className="title text-left">IT Service Desk Technician - <span className="place"><a href="https://www.pharmaca.com/">Pharmaca Integrative Pharmacy</a></span> <span className="year">(2020 - 2021)</span></h3>
                                 <ul className="text-left">
                                     <li>Communicating with pharmacy and retail staff in 35 stores across the country to resolve issues with various types of hardware and software resulting in reliable store operations</li>
                                     <li>Used ticket volume metrics to determine problem pieces of equipment and presented data to management to instigate budget for replacements and improve experience for end users</li>
