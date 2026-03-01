@@ -1,6 +1,11 @@
 import Link from "next/link";
 import Container from "@/components/layout/Container";
 import { getAllPosts } from "@/lib/posts";
+import GitHubActivity from "@/components/GitHubActivity";
+import ContributionGraph from "@/components/ContributionGraph";
+
+
+export const revalidate = 3600;
 
 export default async function Home() {
   const posts = getAllPosts().slice(0, 3);
@@ -25,6 +30,10 @@ export default async function Home() {
           <li>Setting up this site</li>
         </ul>
       </section>
+
+      <ContributionGraph />
+
+      <GitHubActivity />
 
       <section className="mt-12">
         <div className="flex items-baseline justify-between mb-6">
