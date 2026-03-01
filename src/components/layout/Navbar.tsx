@@ -6,7 +6,7 @@ export default function Navbar() {
           <div className="space-x-6 text-sm text-neutral-400">
             <a href="/">Home</a>
             <a href="/blog">Blog</a>
-            <a href="https://github.com/yourusername">GitHub</a>
+            <a href="https://github.com/Czarke">GitHub</a>
           </div>
         </div>
       </nav>

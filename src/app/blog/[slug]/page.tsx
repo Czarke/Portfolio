@@ -19,7 +19,7 @@ export async function generateMetadata(
   const { slug } = await params;
   const post = getPostBySlug(slug);
 
-  const url = `https://yourdomain.com/blog/${slug}`; // replace later
+  const url = `https://seanpatterson.me/blog/${slug}`; // replace later
 
   return {
     title: post.meta.title,
