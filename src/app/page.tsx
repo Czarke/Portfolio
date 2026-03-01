@@ -3,7 +3,7 @@ import Container from "@/components/layout/Container";
 import { getAllPosts } from "@/lib/posts";
 import GitHubActivity from "@/components/GitHubActivity";
 import ContributionGraph from "@/components/ContributionGraph";
-
+import Image from "next/image";
 
 export const revalidate = 3600;
 
@@ -12,24 +12,26 @@ export default async function Home() {
 
   return (
     <Container>
-      <section>
-        <h1 className="text-3xl font-bold">Sean Patterson</h1>
-        <p className="mt-2 text-neutral-400 text-lg">DevOps Engineer</p>
-        <p className="mt-4 text-neutral-300 max-w-xl">
-          I&apos;m a DevOps engineer currently on break attending Japanese language school.
-          I use this site to document the infrastructure work I do on my home lab —
-          KVM virtualization, Kubernetes, and whatever else I&apos;m building.
-        </p>
+      <section className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-8">
+        <div>
+          <h1 className="text-3xl font-bold">Sean Patterson</h1>
+          <p className="mt-2 text-neutral-400 text-lg">DevOps Engineer</p>
+          <p className="mt-4 text-neutral-300 max-w-xl">
+            I&apos;m a DevOps engineer currently on break attending Japanese language school.
+            I use this site to document the infrastructure work I do on my home lab —
+            KVM virtualization, Kubernetes, and whatever else I&apos;m building.
+          </p>
+        </div>
+        <Image
+          src="/Portrait.jpg"
+          alt="Sean Patterson"
+          width={120}
+          height={120}
+          className="rounded-full shrink-0"
+          priority
+        />
       </section>
 
-      <section className="mt-12">
-        <h2 className="text-xl font-semibold mb-4">Currently</h2>
-        <ul className="space-y-2 text-neutral-400 list-disc list-inside">
-          <li>Studying Japanese</li>
-          <li>Building a 3-node KVM + Kubernetes cluster on a Dell OptiPlex 7050 Micro</li>
-          <li>Setting up this site</li>
-        </ul>
-      </section>
 
       <ContributionGraph />
 

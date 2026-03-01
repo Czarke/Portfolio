@@ -32,7 +32,7 @@ The component embedding is useful for things I plan to add later — custom call
 
 TypeScript adds a compilation step and requires more upfront thought, but for a project with multiple interconnected pieces — the posts utility, the GitHub API functions, the component props — the type safety pays for itself quickly. When I refactor something, the type errors tell me exactly what broke. It frontloads the headache of typing. Annoying at first, but ultimately appreciated.
 
-For a DevOps engineer writing web code rather than making it their primary discipline, TypeScript's IDE support (autocomplete, inline documentation, jump-to-definition) is particularly valuable. It partially compensates for not having the React API internalized.
+For a DevOps engineer writing web code rather than making it their primary discipline, TypeScript's IDE support (autocomplete, inline documentation, jump-to-definition) is valuable. It partially compensates for not having the React API internalized.
 
 ## Why AWS Amplify
 
@@ -54,6 +54,8 @@ content/
 ```
 
 The filename becomes the URL: `seanpatterson.me/blog/making-this-website`. No separate routing config, no database IDs, no slugs stored in frontmatter — the filename *is* the identifier.
+
+![File structure](/filestructure.png)
 
 Next.js handles this through a dynamic route at `src/app/blog/[slug]/page.tsx`. The `[slug]` in the folder name tells Next.js this segment is variable. At build time, `generateStaticParams()` reads all the filenames from `content/` and returns them as a list, which Next.js uses to pre-render one page per post:
 
