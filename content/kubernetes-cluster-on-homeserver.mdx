@@ -1,0 +1,142 @@
+---
+title: "Building a Kubernetes Cluster on a Home Server"
+date: "2026-03-12"
+description: "Setting up KVM virtualization and a three-node Kubernetes cluster on a Dell micro PC — the decisions, the why, and the gotchas."
+---
+
+I have a Dell OptiPlex 7050 Micro sitting on my desk running Ubuntu Server. It's on an old 4 core i5-7500t, but I threw 32gb of ram and a 1tb nvme in to to spruce it up a bit. The goal is to turn it into a proper homelab — running a Kubernetes cluster, an Elasticsearch stack to log various application activity around the house, and Pi-hole for network-level ad blocking.
+
+This post covers the first phase: getting KVM virtualization set up and strapping together a three-node Kubernetes cluster on it.
+
+## Why Virtualize At All
+
+Honestly, for my specific workloads, running Kubernetes directly on the host probably would have been simpler. Three services doesn't quite justify the overhead of VMs.
+
+That's not really the point though. I want to stay in practice. The approaches I've used at work — separating concerns across machines, managing network boundaries, treating infrastructure as something that can fail and recover — are easier to practice if the environment reflects those constraints. VMs give me that. Running everything on a single host would work, but it wouldn't teach me anything I don't already know.
+
+## KVM and the Bridge Network
+
+KVM (Kernel-based Virtual Machine) is a Linux kernel module that lets the kernel act as a hypervisor. libvirt sits on top of it and provides tooling — `virsh` for managing VMs from the CLI, storage pool management, network management.
+
+Before creating any VMs, I needed a bridge network. A bridge lets VMs appear as full participants on my home network — they get their own IPs from the router, they're directly reachable, and they behave like separate physical machines. The alternative is NAT, where the host forwards traffic on behalf of the VMs. NAT is simpler but means the VMs aren't directly addressable, which becomes awkward for a cluster where nodes need to talk to each other.
+
+My Netplan config on the host:
+
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp0s31f6:
+      dhcp4: no
+  bridges:
+    br0:
+      interfaces: [enp0s31f6]
+      dhcp4: yes
+```
+
+The physical NIC is enslaved to `br0`, meaning it now uses the bridge as the host's network interface. The bridge gets the DHCP lease. VMs also attach to `br0` and get their own leases directly from the router.
+
+## VM Layout
+
+I created three VMs using `virt-install`, each running Ubuntu Server 24.04 (the same image as the host for simplicity):
+
+| VM | vCPUs | RAM | Disk | Role |
+|---|---|---|---|---|
+| k8s-control | 2 | 4GB | 40GB | Kubernetes control plane |
+| k8s-worker-1 | 3 | 10GB | 150GB | Worker (Elasticsearch, Logstash) |
+| k8s-worker-2 | 3 | 10GB | 150GB | Worker (Pi-hole, future workloads) |
+
+Total vCPUs assigned: 8, against 4 physical cores. This is overcommitment, and in a production environment it would be a problem. For a homelab with limited resource where not everything is peaking simultaneously, I think it's fine.
+
+One thing I ran into: Ubuntu's auto-partitioner created a 100GB LVM logical volume on a 928GB volume group, leaving most of the drive unallocated. libvirt's image pool pointed at `/var/lib/libvirt/images/` which lived on that 100GB partition, so VM disk creation was failing. It's been a while since I dealt with volume allocation, forgot to set it up when formatting. Fixed by extending the logical volume to use the full disk:
+
+```bash
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+```
+
+VMs use qcow2 disk images, which are thin-provisioned — a 150GB disk only consumes actual space as data is written, not all at once.
+
+After creation, I set static IPs via Netplan on each VM and added DHCP reservations in my router. Kubernetes is sensitive to node IPs changing — if a node's IP shifts, the cluster loses track of it.
+
+## Why kubeadm
+
+The Ubuntu installer offered microk8s as a snap package. I skipped it. microk8s is designed for single-node deployments and doesn't reflect how multi-node clusters are actually managed.
+
+kubeadm is the standard bootstrapping tool for production Kubernetes clusters. It's a bit more involved, but the concepts transfer directly to real environments. k3s would have been another reasonable choice — it's lightweight and popular for homelabs — but I wanted a more production-esque Kubernetes experience for practice.
+
+## Node Preparation
+
+Before initializing the cluster, every node needs the same prep.
+
+**Disable swap.** Kubernetes requires it. Swap interferes with the scheduler's memory accounting — if a pod gets swapped out, Kubernetes still thinks it has that memory available, which leads to bad scheduling.
+
+**Load kernel modules.** Two are needed: `overlay`, which containerd uses for layered container filesystems, and `br_netfilter`, which allows iptables to see bridged network traffic. Without `br_netfilter`, pod-to-pod networking across nodes doesn't work.
+
+**Set sysctl params.** Three values:
+- `net.bridge.bridge-nf-call-iptables = 1` — passes bridged traffic through iptables, required for service routing and network policies
+- `net.bridge.bridge-nf-call-ip6tables = 1` — same for IPv6
+- `net.ipv4.ip_forward = 1` — allows the node to forward packets between interfaces, essential for pod communication across nodes
+
+**Install containerd.** This is the container runtime — the thing that actually runs containers. One config change is critical: `SystemdCgroup = true`. Both systemd (Ubuntu's init system) and containerd need to manage cgroups, which I learned is the kernel feature that enforces resource limits on processes. If they use different cgroup drivers, they conflict and cause node instability. Setting containerd to use the systemd driver means they cooperate.
+
+**Install kubeadm, kubelet, and kubectl.**
+- `kubelet` is the agent that runs on every node — it manages containers on that node and reports health to the control plane
+- `kubeadm` bootstraps the cluster — you run it once to initialize and once per worker to join
+- `kubectl` is the CLI for interacting with the cluster
+
+All three are held at their installed version with `apt-mark hold` to prevent accidental upgrades. Version skew between nodes — where the control plane is running a different Kubernetes version than the workers — can break a cluster silently (wondering if this could be automated considering this is a home-lab and I don't mind if it breaks).
+
+## Bootstrapping the Cluster
+
+On the control plane:
+
+```bash
+sudo kubeadm init \
+  --control-plane-endpoint=<control-plane-ip>
+  --pod-network-cidr=10.244.0.0/16 \
+  --apiserver-advertise-address=<control-plane-ip>
+```
+
+The `pod-network-cidr` defines the internal IP range for pods. I used `10.244.0.0/16` because that's the default expected by Flannel, the CNI plugin I chose.
+
+After init, kubectl access is set up by copying the admin config:
+
+```bash
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
+
+## CNI: Flannel
+
+Kubernetes doesn't handle pod networking itself — it defines an interface (CNI) and expects a plugin to implement it. Flannel is what I installed.
+
+Flannel assigns each node a subnet from the pod CIDR. When a pod on worker-1 needs to reach a pod on worker-2, Flannel encapsulates the packet via VXLAN and sends it over the real network, where it's unwrapped and delivered. The result is a flat virtual network where every pod can reach every other pod by IP, regardless of which physical node it's on.
+
+I chose Flannel because it's simple and does exactly one thing. The more capable alternatives — Calico adds network policies, Cilium uses eBPF for better performance and observability — are worth considering later if I need pod-level firewall rules.
+
+## Joining the Workers
+
+kubeadm init prints a join command at the end. Running it on each worker node with sudo is all that's needed:
+
+```bash
+sudo kubeadm join <control-plane-ip>:6443
+  --discovery-token-ca-cert-hash sha256:<hash>
+```
+
+The token expires after 24 hours(ask me how I know this). If you need to add a node later, you can generate a new one with `kubeadm token create --print-join-command`.
+
+After joining both workers:
+
+```
+NAME           STATUS   ROLES           AGE     VERSION
+k8s-control    Ready    control-plane   5m18s   v1.32.13
+k8s-worker-1   Ready    worker          33s     v1.32.13
+k8s-worker-2   Ready    worker          25s     v1.32.13
+```
+
+## Next Steps
+
+The cluster is running but empty. Next I'll be deploying Pi-hole as a network-level DNS filter and an Elasticsearch stack for log aggregation. I also want to set up the cluster to serve this blog directly from the homelab as a secondary host — more on that in a future post.

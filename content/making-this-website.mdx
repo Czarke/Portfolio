@@ -10,7 +10,7 @@ I wanted a personal site that would serve two purposes: a place to document the 
 
 Next.js seems to be the dominant React framework right now, and I haven't built a web app in years, so I decided to go with the popular option. But there are technical reasons too.
 
-Next.js offers server-side rendering, static generation, and incremental static regeneration in one framework — without having to stitch together separate tools. The blog is mostly static content, but I wanted to be able to pull from APIs dynamically, so I went with ISR. Pages build at deploy time but revalidate in the background on a schedule. No stale data, but I have the regeneration set pretty infrequently, so no serious server load.
+Next.js offers server-side rendering, static generation, and incremental static regeneration in one framework — without having to stitch together separate tools. The blog is mostly static content, but I wanted to be able to pull from APIs dynamically, so I went a framework that makes ISR easy. Pages build at deploy time but revalidate in the background on a schedule. No stale data, but I have the regeneration set pretty infrequently, so no serious server load.
 
 I also considered Astro, which seems to have great static site performance and MDX support, but it's a smaller ecosystem and I wanted to increase the chances that I work with something that will be relevant in future professional environments.
 
