@@ -1,10 +1,10 @@
 ---
-title: "Building a Kubernetes Cluster on a Home Server"
+title: "Building a Kubernetes cluster on a home server"
 date: "2026-03-12"
 description: "Setting up KVM virtualization and a three-node Kubernetes cluster on a Dell micro PC — the decisions, the why, and the gotchas."
 ---
 
-I have a Dell OptiPlex 7050 Micro sitting on my desk running Ubuntu Server. It's on an old 4 core i5-7500t, but I threw 32gb of ram and a 1tb nvme in to to spruce it up a bit. The goal is to turn it into a proper homelab — running a Kubernetes cluster, an Elasticsearch stack to log various application activity around the house, and Pi-hole for network-level ad blocking.
+I have a Dell OptiPlex 7050 Micro sitting on my desk running Ubuntu Server. It's on an old 4 core i5-7500t, but I threw 32gb of ram and a 1tb nvme in to spruce it up a bit. The goal is to turn it into a proper homelab — running a Kubernetes cluster, an Elasticsearch stack to log various application activity around the house, and Pi-hole for network-level ad blocking.
 
 This post covers the first phase: getting KVM virtualization set up and strapping together a three-node Kubernetes cluster on it.
 
@@ -16,11 +16,11 @@ That's not really the point though. I want to stay in practice. The approaches I
 
 ## KVM and the Bridge Network
 
-KVM (Kernel-based Virtual Machine) is a Linux kernel module that lets the kernel act as a hypervisor. libvirt sits on top of it and provides tooling — `virsh` for managing VMs from the CLI, storage pool management, network management.
+[KVM](https://www.linux-kvm.org/page/Main_Page) (Kernel-based Virtual Machine) is a Linux kernel module that lets the kernel act as a hypervisor. [libvirt](https://ubuntu.com/server/docs/how-to/virtualisation/libvirt/) sits on top of it and provides tooling — `virsh` for managing VMs from the CLI, storage pool management, network management.
 
 Before creating any VMs, I needed a bridge network. A bridge lets VMs appear as full participants on my home network — they get their own IPs from the router, they're directly reachable, and they behave like separate physical machines. The alternative is NAT, where the host forwards traffic on behalf of the VMs. NAT is simpler but means the VMs aren't directly addressable, which becomes awkward for a cluster where nodes need to talk to each other.
 
-My Netplan config on the host:
+My [Netplan](https://netplan.readthedocs.io/en/stable/) config on the host:
 
 ```yaml
 network:
@@ -64,7 +64,7 @@ After creation, I set static IPs via Netplan on each VM and added DHCP reservati
 
 The Ubuntu installer offered microk8s as a snap package. I skipped it. microk8s is designed for single-node deployments and doesn't reflect how multi-node clusters are actually managed.
 
-kubeadm is the standard bootstrapping tool for production Kubernetes clusters. It's a bit more involved, but the concepts transfer directly to real environments. k3s would have been another reasonable choice — it's lightweight and popular for homelabs — but I wanted a more production-esque Kubernetes experience for practice.
+[kubeadm](https://kubernetes.io/docs/reference/setup-tools/kubeadm/) is the standard bootstrapping tool for production Kubernetes clusters. It's a bit more involved, but the concepts transfer directly to real environments. k3s would have been another reasonable choice — it's lightweight and popular for homelabs — but I wanted a more production-esque Kubernetes experience for practice.
 
 ## Node Preparation
 
@@ -79,7 +79,7 @@ Before initializing the cluster, every node needs the same prep.
 - `net.bridge.bridge-nf-call-ip6tables = 1` — same for IPv6
 - `net.ipv4.ip_forward = 1` — allows the node to forward packets between interfaces, essential for pod communication across nodes
 
-**Install containerd.** This is the container runtime — the thing that actually runs containers. One config change is critical: `SystemdCgroup = true`. Both systemd (Ubuntu's init system) and containerd need to manage cgroups, which I learned is the kernel feature that enforces resource limits on processes. If they use different cgroup drivers, they conflict and cause node instability. Setting containerd to use the systemd driver means they cooperate.
+**Install [containerd](https://github.com/containerd/containerd/tree/main).** This is the container runtime — the thing that actually runs containers. One config change is critical: `SystemdCgroup = true`. Both systemd (Ubuntu's init system) and containerd need to manage cgroups, which I learned is the kernel feature that enforces resource limits on processes. If they use different cgroup drivers, they conflict and cause node instability. Setting containerd to use the systemd driver means they cooperate.
 
 **Install kubeadm, kubelet, and kubectl.**
 - `kubelet` is the agent that runs on every node — it manages containers on that node and reports health to the control plane
@@ -94,7 +94,7 @@ On the control plane:
 
 ```bash
 sudo kubeadm init \
-  --control-plane-endpoint=<control-plane-ip>
+  --control-plane-endpoint=<control-plane-ip> \
   --pod-network-cidr=10.244.0.0/16 \
   --apiserver-advertise-address=<control-plane-ip>
 ```
@@ -111,7 +111,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 ## CNI: Flannel
 
-Kubernetes doesn't handle pod networking itself — it defines an interface (CNI) and expects a plugin to implement it. Flannel is what I installed.
+Kubernetes doesn't handle pod networking itself — it defines an interface ([CNI](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/)) and expects a plugin to implement it. [Flannel](https://github.com/flannel-io/flannel) is what I installed.
 
 Flannel assigns each node a subnet from the pod CIDR. When a pod on worker-1 needs to reach a pod on worker-2, Flannel encapsulates the packet via VXLAN and sends it over the real network, where it's unwrapped and delivered. The result is a flat virtual network where every pod can reach every other pod by IP, regardless of which physical node it's on.
 
@@ -122,7 +122,7 @@ I chose Flannel because it's simple and does exactly one thing. The more capable
 kubeadm init prints a join command at the end. Running it on each worker node with sudo is all that's needed:
 
 ```bash
-sudo kubeadm join <control-plane-ip>:6443
+sudo kubeadm join <control-plane-ip>:6443 --token <token> \
   --discovery-token-ca-cert-hash sha256:<hash>
 ```
 
