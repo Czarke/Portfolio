@@ -1,0 +1,133 @@
+---
+title: "Kubernetes observability with Prometheus and Grafana"
+date: "2026-03-25"
+description: "Deploying the kube-prometheus-stack on a homelab Kubernetes cluster, exposing Grafana remotely over Tailscale, and a swap gotcha that took down the cluster after a reboot."
+---
+
+With the Kubernetes cluster running, the next thing I wanted was visibility into it. CPU and memory per node, pod health, resource usage over time. Without metrics, the cluster is a black box.
+
+The standard solution for this in Kubernetes is [Prometheus](https://prometheus.io/) for metrics collection and [Grafana](https://grafana.com/) for visualization. Prometheus scrapes metrics from your nodes and workloads on a schedule and stores them as time series data. Grafana queries Prometheus and turns that data into dashboards.
+
+## Why not Elasticsearch
+
+My original plan included an [Elasticsearch](https://www.elastic.co/elasticsearch) stack — Elasticsearch for storage, Logstash for ingestion, Kibana for visualization. The ELK stack is the standard choice for log aggregation at scale, and I've worked with it in my previous position at Vantor.
+
+I decided against it for now. Elasticsearch is memory-hungry — a production-viable single node wants at least 8GB of heap, and that's before Logstash and Kibana. On a host with 32GB split across three VMs, that's a significant chunk of available resources for something I don't currently have a compelling use case for. My ingest volume is low: a handful of services, no high-frequency application logs, nothing that justifies the overhead.
+
+Prometheus is a better fit for what I actually need right now — infrastructure metrics. If I end up with real log aggregation requirements later (application logs, security events, anything where full-text search matters), I'll revisit. For now it's the wrong tool.
+
+## kube-prometheus-stack
+
+Rather than deploying Prometheus and Grafana separately and wiring them together, there's a Helm chart called [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) that bundles the full observability stack:
+
+- Prometheus
+- Grafana
+- Alertmanager
+- node-exporter (host-level metrics on each node)
+- kube-state-metrics (Kubernetes object metrics — pod states, deployments, etc.)
+
+Everything pre-configured and wired together. For a homelab this is the obvious choice.
+
+## Helm
+
+[Helm](https://helm.sh/) is the package manager for Kubernetes. Charts are templated collections of Kubernetes manifests that can be installed, upgraded, and removed as a unit. kube-prometheus-stack is distributed as a Helm chart, so the first step was installing Helm on the control plane:
+
+```bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+Then adding the prometheus-community chart repository:
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+```
+
+## Deploying the stack
+
+```bash
+kubectl create namespace monitoring
+
+helm install kube-prom prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set grafana.adminPassword=admin
+```
+
+About ten pods come up in the `monitoring` namespace — Prometheus, Grafana, Alertmanager, one node-exporter per node, and kube-state-metrics. Everything was running within a couple of minutes.
+
+## A snag
+
+Before getting to Grafana, I hit a snag. After rebooting the VMs to apply system upgrades, `kubectl get nodes` was throwing connection refused errors against the API server. The control plane wasn't coming up.
+
+Checking kubelet on the control plane:
+
+```bash
+sudo systemctl status kubelet
+```
+
+It was crash-looping with: *running with swap on is not allowed*.
+
+Kubernetes requires swap to be disabled — the scheduler relies on accurate memory accounting, and swap breaks that. I'd disabled it during the initial cluster setup, but the setting hadn't been made permanent. After a reboot, swap came back.
+
+Fix on all three nodes:
+
+```bash
+sudo swapoff -a
+sudo sed -i '/swap/d' /etc/fstab
+```
+
+The second command removes any swap entries from `/etc/fstab`, which prevents it from being re-enabled on future reboots. Kubelet recovered on its own once swap was off.
+
+## Accessing Grafana
+
+The default Grafana service type is `ClusterIP`, which is only reachable from inside the cluster. To access it from my network, I changed it to `NodePort` — this exposes the service on a port directly on each node's IP, making it reachable from any device on the LAN:
+
+```bash
+helm upgrade kube-prom prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set grafana.adminPassword=admin \
+  --set grafana.service.type=NodePort \
+  --set grafana.service.nodePort=32000
+```
+
+Grafana is now accessible from any device on my home network.
+
+## Remote access with Tailscale
+
+NodePort covers LAN access, but I wanted to reach Grafana (and SSH into the nodes) from outside the house without exposing anything to the internet, as I do a lot of my work on this project in coffee shops (maybe I'll throw a Tokyo coffee post in here soon?).
+
+[Tailscale](https://tailscale.com/) creates a private mesh VPN between your devices. Install it on the nodes, install it on your Mac, authenticate both to the same account, and they can reach each other from anywhere as if they're on the same network. Nothing is publicly exposed — traffic routes through Tailscale's coordination layer.
+
+I installed Tailscale on all three VMs and enabled MagicDNS in the Tailscale admin console, which automatically assigns hostnames to devices on the network. `k8s-control`, `k8s-worker-1`, and `k8s-worker-2` are now resolvable from my Mac without any `/etc/hosts` configuration.
+
+SSH config on my Mac for convenience:
+
+```
+Host k8s-control
+    HostName k8s-control
+    User ubuntu
+
+Host k8s-worker-1
+    HostName k8s-worker-1
+    User ubuntu
+
+Host k8s-worker-2
+    HostName k8s-worker-2
+    User ubuntu
+```
+
+Grafana is accessible from anywhere (on my macbook, anyway) at `http://k8s-control:32000`.
+
+## What you get out of the box
+
+The kube-prometheus-stack ships with a solid set of pre-built dashboards. Useful ones:
+
+- **Kubernetes / Nodes** — CPU, memory, and disk usage per node
+- **Kubernetes / Pods** — resource consumption broken down per pod
+- **Node Exporter / Full** — detailed host-level metrics
+
+For a three-node homelab cluster, seeing actual resource utilization per node is immediately useful for understanding how the VMs are loaded and whether the overcommitted vCPUs are causing issues (something I'm relatively concerned about).
+
+## Next steps
+
+The observability stack is in place (minus logs... for now). Next I want to set up [ArgoCD](https://argo-cd.readthedocs.io/en/stable/) for GitOps — managing cluster deployments from a Git repository rather than running Helm commands manually from the control plane. The idea is to have a `homelab-infra` repo that acts as the source of truth for everything running on the cluster.
