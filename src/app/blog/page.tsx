@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Container from "@/components/layout/Container";
 import { getAllPosts } from "@/lib/posts";
 
+
 export const metadata: Metadata = {
   title: "Blog",
   description: "Writing on home infrastructure, Kubernetes, and DevOps.",

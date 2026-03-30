@@ -10,7 +10,7 @@ This post covers the first phase: getting KVM virtualization set up and strappin
 
 ## Why Virtualize At All
 
-Honestly, for my specific workloads, running Kubernetes directly on the host probably would have been simpler. Three services doesn't quite justify the overhead of VMs.
+Honestly, for my specific workloads, just running containers directly on the host with Docker would have been simpler. Three services doesn't quite justify the overhead of VMs and a full cluster.
 
 That's not really the point though. I want to stay in practice. The approaches I've used at work — separating concerns across machines, managing network boundaries, treating infrastructure as something that can fail and recover — are easier to practice if the environment reflects those constraints. VMs give me that. Running everything on a single host would work, but it wouldn't teach me anything I don't already know.
 

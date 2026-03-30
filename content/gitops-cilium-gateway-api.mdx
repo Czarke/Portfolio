@@ -1,0 +1,319 @@
+---
+title: "GitOps, Cilium, and proper HTTPS on a bare metal cluster"
+date: "2026-03-30"
+description: "Setting up ArgoCD for GitOps, migrating from Flannel to Cilium, and wiring up Gateway API with cert-manager and Let's Encrypt for real HTTPS on a homelab Kubernetes cluster."
+---
+
+This post covers a few things I did to the homelab cluster in the past week: setting up GitOps with ArgoCD, deploying Pi-hole, and then a larger effort to get proper HTTPS routing working. That last part involving fixing a mistake I made early on — choosing Flannel as the cluster CNI.
+
+## GitOps with ArgoCD
+
+The cluster was functional but everything was deployed manually — `helm install` commands run from the control plane, nothing tracked, no easy way to reproduce the state if something breaks.
+
+[ArgoCD](https://argo-cd.readthedocs.io/en/stable/) is a GitOps controller for Kubernetes. You point it at a Git repository, define what should be deployed where, and it continuously reconciles the cluster to match the repo. If you change something manually on the cluster, ArgoCD notices and reverts it. The repository becomes the source of truth.
+
+I created a `homelab-infra` repo on GitHub and structured it around the app-of-apps pattern:
+
+```
+homelab-infra/
+├── bootstrap/
+│   └── root-app.yaml       ← applied once manually to bootstrap
+├── apps/                   ← ArgoCD watches this directory
+│   ├── monitoring/
+│   ├── networking/
+│   └── argocd/
+└── manifests/              ← raw manifests and helm values
+    ├── monitoring/
+    ├── networking/
+    ├── gateway/
+    └── cert-manager/
+```
+
+`apps/` contains ArgoCD `Application` manifests — these are ArgoCD's own resource type that says "watch this Helm chart or this directory and keep it deployed." `manifests/` contains the actual Kubernetes resources: raw YAML, Helm values, ConfigMaps, CRDs. The `apps/` directory tells ArgoCD *what* to deploy and *where to find it*; `manifests/` is what it actually deploys.
+
+The root app watches `apps/` recursively. Any `Application` manifest dropped in `apps/` gets automatically picked up — ArgoCD deploys it and starts reconciling whatever that Application points at. Adding a new service means writing two things: an `Application` manifest in `apps/` and the actual resource definitions in `manifests/`.
+
+Bootstrapping is a one-time manual step:
+
+```bash
+kubectl apply -f bootstrap/root-app.yaml
+```
+
+After that, the repo drives everything. The kube-prometheus-stack I'd installed manually got migrated to ArgoCD management — ArgoCD adopted the existing Helm release and took ownership of it.
+
+One thing worth noting: ArgoCD has a bootstrapping problem with private repos. The controller needs credentials to pull from GitHub before it can manage anything. The credentials go in as a Kubernetes secret with a specific label that ArgoCD looks for:
+
+```bash
+kubectl create secret generic homelab-infra-repo \
+  --namespace argocd \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/username/homelab-infra.git \
+  --from-literal=username=<username> \
+  --from-literal=password=<github-pat>
+
+kubectl label secret homelab-infra-repo \
+  --namespace argocd \
+  argocd.argoproj.io/secret-type=repository
+```
+
+The PAT only needs repository read access — ArgoCD never pushes back.
+
+## Pi-hole on Kubernetes
+
+With GitOps working, the next thing was Pi-hole. Pi-hole is a DNS sinkhole — it intercepts DNS queries and blocks ones that match ad and tracker blocklists. When every device on the network uses it as its DNS server, you get network-level ad blocking without any browser extensions.
+
+Running it on Kubernetes required some thought. The standard NodePort range is 30000-32767, which means you can't expose port 53 (the DNS port) via NodePort. The solution is `hostPort` — this binds a specific container port directly to the host's network interface, bypassing the usual service setup.
+
+The relevant helm values:
+
+```yaml
+dnsHostPort:
+  enabled: true
+nodeSelector:
+  kubernetes.io/hostname: k8s-control
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+```
+
+Pi-hole needs to be pinned to a specific node via `nodeSelector` — `hostPort` binds to whichever node the pod lands on, so if the pod gets rescheduled to a different node, the IP changes and the router's DNS setting breaks. I pinned it to the control plane specifically because the workers are where actual workloads run. If a worker node gets memory pressure from something like Prometheus or a future application, the scheduler might evict lower-priority pods to make room. The control plane runs only cluster management components and is much less likely to see that kind of churn. The toleration is needed because the control plane has a taint that normally prevents regular workloads from scheduling there — this is a deliberate Kubernetes default to keep the control plane stable.
+
+The web UI is accessible at `http://k8s-control:30080/admin` internally.
+
+## The CNI mistake
+
+Back when I set up the cluster, I chose [Flannel](https://github.com/flannel-io/flannel) as the CNI. My reasoning at the time: it's simple, it does exactly one thing, and the more capable options felt like overkill for a homelab just getting started.
+
+This was the wrong call for a few reasons:
+
+1. **Flannel has no network policy support.** You can't restrict pod-to-pod communication. I don't really *need* this right now, but TLS is something I struggled with in my last position. I want to learn more here.
+2. **Flannel has no observability.** No visibility into what's happening at the network level.
+3. **Flannel doesn't implement Gateway API.** This became the immediate problem.
+
+Claude wanted me to use [ingress-nginx](https://github.com/kubernetes/ingress-nginx) — the most widely used Kubernetes ingress controller — but I was aware of it's deprecation this month due to my former platform team looking for an alternative. I'll try out [Gateway API](https://gateway-api.sigs.k8s.io/), a more expressive and extensible traffic management standard. Getting proper HTTPS routing working meant using Gateway API, and Gateway API support in Cilium requires kube-proxy replacement — something I hadn't configured.
+
+[Cilium](https://cilium.io/) uses eBPF to implement networking at the kernel level. It's the default CNI in GKE, has first-class support in EKS, and is the direction the Kubernetes ecosystem is moving. It natively implements Gateway API, supports network policy, and provides deep observability via Hubble. It's what I should have started with.
+
+## Migrating from Flannel to Cilium
+
+Replacing a CNI on a live cluster is disruptive — it requires removing the old CNI, installing the new one, and restarting all pods so they get new network interfaces. Thankfully, this is a homelab, tearing the cluster down disturbs nobody but me.
+
+**Remove Flannel:**
+
+```bash
+kubectl delete -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+```
+
+**Clean up Flannel interfaces on every node:**
+
+```bash
+sudo ip link delete flannel.1
+sudo ip link delete cni0
+sudo rm -f /etc/cni/net.d/10-flannel.conflist
+```
+
+**Install Cilium with kube-proxy replacement enabled:**
+
+```bash
+cilium install \
+  --version 1.19.1 \
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=ip \
+  --set k8sServicePort=6443 \
+  --set gatewayAPI.enabled=true
+```
+
+Gateway API support requires `kubeProxyReplacement=true` — Cilium needs to own service routing entirely to implement the Gateway controller. With kube-proxy replacement enabled, kube-proxy can be removed:
+
+```bash
+kubectl delete daemonset kube-proxy -n kube-system
+kubectl delete configmap kube-proxy -n kube-system
+```
+
+After Cilium was running, all existing pods needed a restart to get new network interfaces from Cilium instead of the old Flannel ones:
+
+```bash
+kubectl delete pods --all -n argocd
+kubectl delete pods --all -n monitoring
+kubectl delete pods --all -n pihole
+```
+
+One gotcha during the migration: `systemd-resolved`'s stub resolver (127.0.0.53) stopped responding, which meant the control plane node couldn't resolve external hostnames and Cilium's image pull was failing. The fix was to bypass the stub entirely with a static `resolv.conf`:
+
+```bash
+sudo sh -c 'echo "nameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf'
+```
+
+This is actually the recommended configuration for Kubernetes nodes — the systemd-resolved stub adds unnecessary indirection.
+
+## MetalLB
+
+Gateway API uses LoadBalancer services to get an external IP for the Gateway. On a cloud provider, this is handled automatically. On bare metal, you need [MetalLB](https://metallb.universe.tf/).
+
+MetalLB operates in Layer 2 mode for this setup — it uses ARP to advertise a pool of IP addresses on the local network, making them reachable as if they were real hosts. I allocated a small range of IPs outside the router's DHCP pool.
+
+The configuration, managed via ArgoCD:
+
+```yaml
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: homelab-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - <lb-ip-start>-<lb-ip-end>
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: homelab-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - homelab-pool
+```
+
+## cert-manager and Let's Encrypt
+
+[cert-manager](https://cert-manager.io/) automates TLS certificate management in Kubernetes. You describe the certificate you want, and cert-manager handles requesting it from Let's Encrypt, storing it as a Kubernetes Secret, and renewing it before it expires.
+
+Let's Encrypt requires you to prove you control the domain. For a wildcard certificate (`*.homelab.seanpatterson.me`), the DNS-01 challenge is the only option — cert-manager creates a temporary TXT record in Route 53, Let's Encrypt verifies it, and the cert is issued.
+
+The setup requires an IAM user with Route 53 permissions. The policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "route53:GetChange",
+      "Resource": "arn:aws:route53:::change/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets"
+      ],
+      "Resource": "arn:aws:route53:::hostedzone/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "route53:ListHostedZonesByName",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+The IAM secret key is stored as a Kubernetes Secret, referenced by a `ClusterIssuer`:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: <email>
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          route53:
+            region: us-east-1
+            hostedZoneID: <hosted-zone-id>
+            accessKeyID: <access-key-id>
+            secretAccessKeySecretRef:
+              name: route53-credentials
+              key: secret-access-key
+```
+
+## Gateway API
+
+With MetalLB and cert-manager in place, the Gateway ties it together. A single Gateway resource gets a LoadBalancer IP from MetalLB and terminates TLS using the wildcard cert:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: homelab-gateway
+  namespace: kube-system
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: homelab-wildcard-tls
+            namespace: kube-system
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+MetalLB assigned an IP from the pool to the Gateway. A wildcard DNS record in Route 53 (`*.homelab.seanpatterson.me → <gateway-ip>`) means any subdomain routes to the Gateway.
+
+Individual services get HTTPRoutes that tell the Gateway how to route traffic by hostname:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: homelab-gateway
+      namespace: kube-system
+  hostnames:
+    - grafana.homelab.seanpatterson.me
+  rules:
+    - backendRefs:
+        - name: kube-prom-grafana
+          port: 80
+```
+
+Adding a new service to the Gateway is now just a new HTTPRoute in the repo.
+
+## Remote access via Tailscale subnet routing
+
+The Gateway IP is a private home network address — it's not reachable from the public internet, and Tailscale only knows about the physical node IPs, not MetalLB virtual IPs. To reach the Gateway remotely, I needed Tailscale to route the entire home subnet through `k8s-control`:
+
+```bash
+sudo tailscale up --advertise-routes=<home-subnet>/24
+```
+
+After approving the route in the Tailscale admin console, any device on my Tailscale network can reach any IP on the home network — including the Gateway.
+
+## The result
+
+Services that were previously accessible only via raw NodePort URLs on the home network:
+
+```
+http://k8s-control:32000       # Grafana
+https://k8s-control:32443      # ArgoCD
+```
+
+Are now accessible from anywhere (on my Tailscale network) with proper HTTPS:
+
+```
+https://grafana.homelab.seanpatterson.me
+https://argocd.homelab.seanpatterson.me
+```
+
+Certificates are issued by Let's Encrypt and renew automatically. Adding a new service requires one HTTPRoute manifest and a git push.
+
+## Next steps
+
+The next thing I want to do is deploy this portfolio site to the cluster — `seanpatterson.me` served directly from the homelab, with ArgoCD handling deployments on git push via a CI/CD pipeline.
