@@ -30,6 +30,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.PORTFOLIO_GITHUB_TOKEN }}
           tags: |
             ghcr.io/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
