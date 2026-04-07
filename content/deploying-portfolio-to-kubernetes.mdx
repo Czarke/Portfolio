@@ -1,0 +1,156 @@
+---
+title: "Deploying this site to Kubernetes"
+date: "2026-04-07"
+description: "Containerizing a Next.js app and setting up a full GitOps CI/CD pipeline with GitHub Actions, GHCR, and ArgoCD — running alongside the existing AWS Amplify deployment."
+---
+
+This site runs on AWS Amplify. Amplify watches the `main` branch, builds on push, and handles the deployment automatically — it's a great experience for a Next.js app (especially compared to using Buddy for my first website years ago). But I wanted to also deploy it to the homelab Kubernetes cluster, both to have it running there and to wire up a real CI/CD pipeline from scratch.
+
+The goal: push to `main`, have the site automatically built, containerized, and deployed to the cluster — without touching the publicly available site on Amplify.
+
+## Containerizing Next.js
+
+Next.js has a `standalone` output mode that produces a minimal self-contained build — a `server.js` file plus the required node modules.
+
+Just a couple lines in `next.config.ts`:
+
+```ts
+const nextConfig: NextConfig = {
+  output: "standalone",
+  // ...
+};
+```
+
+The Dockerfile uses a multi-stage build to keep the final image small:
+
+```dockerfile
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+ARG GITHUB_TOKEN
+ENV GITHUB_TOKEN=$GITHUB_TOKEN
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+CMD ["node", "server.js"]
+```
+
+Three stages: `deps` installs packages, `builder` runs `next build`, `runner` copies only the standalone output. The final image has no source code and no full `node_modules/`.
+
+The `GITHUB_TOKEN` build arg is necessary because the home page fetches GitHub data (repos and contribution graph) at build time during static generation. I thought I could get by just having the secrets in repo secrets, but without build args, the fetch returns an error.
+
+## The CI/CD pipeline
+
+The workflow lives in `.github/workflows/deploy.yml` and has two jobs.
+
+**Job 1: build and push**
+
+Builds the Docker image and pushes it to GitHub Container Registry with two tags — `latest` and the full commit SHA:
+
+```yaml
+- name: Build and push
+  uses: docker/build-push-action@v6
+  with:
+    context: .
+    push: true
+    build-args: |
+      GITHUB_TOKEN=${{ secrets.PORTFOLIO_GITHUB_TOKEN }}
+    tags: |
+      ghcr.io/czarke/portfolio:latest
+      ghcr.io/czarke/portfolio:${{ github.sha }}
+```
+
+The SHA tag is what actually gets deployed — `latest` is convenient for pulling manually but the cluster always runs a specific SHA so you know exactly what's running.
+
+**Job 2: update homelab-infra**
+
+Checks out the `homelab-infra` repo and commits a one-line change — the new image tag in `deployment.yaml`:
+
+```yaml
+- name: Update image tag
+  run: |
+    sed -i "s|image: ghcr.io/czarke/portfolio:.*|image: ghcr.io/czarke/portfolio:${{ github.sha }}|" \
+      manifests/portfolio/deployment.yaml
+```
+
+This is the GitOps part. The `homelab-infra` repo is the source of truth for cluster state — ArgoCD watches it and reconciles. By committing the new tag there, ArgoCD detects the change and triggers a rollout automatically.
+
+## Kubernetes manifests
+
+The portfolio runs in its own namespace. The manifests follow the same structure as everything else in the cluster:
+
+```
+homelab-infra/
+├── apps/
+│   └── portfolio.yaml          ← ArgoCD Application
+└── manifests/
+    └── portfolio/
+        ├── namespace.yaml
+        ├── deployment.yaml      ← Deployment + Service
+        └── httproute.yaml       ← Gateway API route
+```
+
+The ArgoCD Application in `apps/portfolio.yaml` points at `manifests/portfolio/` with automated sync enabled. Because the root app watches `apps/` recursively, pushing this file to the repo is all it takes. ArgoCD picks it up automatically and deploys everything it references.
+
+The HTTPRoute wires the service into the existing Gateway:
+
+```yaml
+spec:
+  parentRefs:
+    - name: homelab-gateway
+      namespace: kube-system
+  hostnames:
+    - portfolio.homelab.seanpatterson.me
+```
+
+The cluster already has a wildcard cert for `*.homelab.seanpatterson.me` and a MetalLB IP for the Gateway, so HTTPS just works without any additional cert configuration.
+
+Two secrets need to exist in the `portfolio` namespace before ArgoCD syncs:
+
+```bash
+# Runtime token for GitHub API calls
+kubectl create secret generic portfolio-secrets \
+  --namespace portfolio \
+  --from-literal=GITHUB_TOKEN=<token>
+
+# Image pull credentials for GHCR
+kubectl create secret docker-registry ghcr-pull-secret \
+  --namespace portfolio \
+  --docker-server=ghcr.io \
+  --docker-username=Czarke \
+  --docker-password=<token>
+```
+
+## The full flow
+
+Once everything is wired up, a push to `main` triggers this sequence automatically:
+
+```
+git push main
+  → GitHub Actions builds Docker image
+  → image pushed to ghcr.io/czarke/portfolio:sha-abc123
+  → Actions commits tag update to homelab-infra
+  → ArgoCD detects git change, syncs Deployment
+  → cluster pulls new image, rolls out new pod
+```
+
+End to end it mirrors what Amplify does — push and the new version is live. The difference is the mechanism: Amplify is managed infrastructure, this is a pipeline I own and can observe at every step.
+
+The site is accessible at `portfolio.homelab.seanpatterson.me` over Tailscale. It's not public — the cluster sits behind NAT on a dynamic IP — but it's the same app as `seanpatterson.me`, just built and deployed through a pipeline I put together.
