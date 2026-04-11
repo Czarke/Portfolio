@@ -56,7 +56,7 @@ export type Repo = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ query }),
-      next: { revalidate: 3600 },
+      cache: "no-store",
     });
   
     const json = await res.json();
