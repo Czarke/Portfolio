@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { ContributionWeek } from "@/lib/github";
 
 function cellColor(count: number): string {
@@ -17,19 +17,8 @@ type Tooltip = {
   y: number;
 } | null;
 
-export default function ContributionGraphClient() {
-  const [weeks, setWeeks] = useState<ContributionWeek[] | null>(null);
+export default function ContributionGraphClient({ weeks }: { weeks: ContributionWeek[] }) {
   const [tooltip, setTooltip] = useState<Tooltip>(null);
-
-  useEffect(() => {
-    fetch("/api/contributions")
-      .then((res) => res.json())
-      .then((data) => setWeeks(data))
-      .catch((err) => {
-        console.error("Failed to fetch contributions:", err);
-        setWeeks([]);
-      });
-  }, []);
 
   function handleMouseEnter(e: React.MouseEvent<HTMLDivElement>, text: string) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -43,8 +32,6 @@ export default function ContributionGraphClient() {
   function handleMouseLeave() {
     setTooltip(null);
   }
-
-  if (weeks === null) return <div className="text-sm text-neutral-500">Loading contributions...</div>;
 
   return (
     <>

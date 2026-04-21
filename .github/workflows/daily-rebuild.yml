@@ -1,0 +1,12 @@
+name: Daily Amplify Rebuild
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  trigger-rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Amplify rebuild
+        run: curl -X POST -d {} "${{ secrets.AMPLIFY_WEBHOOK_URL }}" -H "Content-Type:application/json"
