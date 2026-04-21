@@ -18,14 +18,17 @@ type Tooltip = {
 } | null;
 
 export default function ContributionGraphClient() {
-  const [weeks, setWeeks] = useState<ContributionWeek[]>([]);
+  const [weeks, setWeeks] = useState<ContributionWeek[] | null>(null);
   const [tooltip, setTooltip] = useState<Tooltip>(null);
 
   useEffect(() => {
     fetch("/api/contributions")
       .then((res) => res.json())
       .then((data) => setWeeks(data))
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to fetch contributions:", err);
+        setWeeks([]);
+      });
   }, []);
 
   function handleMouseEnter(e: React.MouseEvent<HTMLDivElement>, text: string) {
@@ -40,6 +43,8 @@ export default function ContributionGraphClient() {
   function handleMouseLeave() {
     setTooltip(null);
   }
+
+  if (weeks === null) return <div className="text-sm text-neutral-500">Loading contributions...</div>;
 
   return (
     <>
