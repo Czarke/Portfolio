@@ -1,0 +1,147 @@
+---
+title: "Using AI to fill some monitoring gaps"
+date: "2026-04-24"
+description: "Building an AI-powered runbook generator that also gave me a reason to actually configure Prometheus alerting on the homelab cluster."
+---
+
+I've been doing a pass through Tokyo DevOps and SRE job postings recently, and two gaps kept surfacing on my resume:
+
+1. **No project that uses AI** Plenty of postings list "experience with AI tools" as a nice-to-have. I use Claude heavily when I build things, but I don't have a project where AI is *part of the product.*
+2. **Thin alerting** My homelab had Prometheus and Grafana deployed, but no alerting. Time to solve that
+
+Listing "used AI to build my website" on a resume isn't meaningfully different from listing a language server, and it opens the door to the sceptical read: *this person is just vibe-coding their way through*. The signal I want to send is different — that I can build something that *uses* AI, reason about when an AI based tool is the right path, and when it isn't.
+
+So: a single project that addresses both gaps. An AI-powered runbook generator triggered by Prometheus alerts.
+
+## The idea
+
+The flow:
+
+1. A Prometheus alert fires (pod crashlooping, node out of memory, certificate expiring, etc.)
+2. Alertmanager sends a webhook to a service running in the cluster
+3. The service sends the alert context to Claude Haiku with a system prompt asking it to produce a runbook — likely causes, investigation commands, resolution steps
+4. The generated runbook gets committed to a private GitHub repo
+5. A Discord notification fires with a link to the runbook
+
+This gives me:
+- A genuine use case for AI in an SRE context (writing potentially useful ops docs automatically)
+- A reason to actually sit down and define alerting rules across the cluster
+- A working Discord notification stream so I notice when things break
+- A concrete artifact — a repo full of runbooks - pointing to the issues that I've resolved
+
+## The service
+
+The webhook receiver is a small [FastAPI](https://fastapi.tiangolo.com/) service written in Python. Full source at [github.com/Czarke/homelab-runbook-generator](https://github.com/Czarke/homelab-runbook-generator). It deploys to the homelab cluster the same way the portfolio does: GitHub Actions builds a Docker image, pushes to GHCR, commits an image tag update to `homelab-infra`, and ArgoCD syncs.
+
+The core handler:
+
+```python
+@app.post("/webhook")
+async def webhook(request: Request):
+    body = await request.json()
+    for alert in body.get("alerts", []):
+        if alert.get("status") != "firing":
+            continue
+        alertname = alert["labels"].get("alertname", "unknown")
+
+        if runbook_exists(alertname):
+            send_discord(alert, runbook_url(alertname))
+            continue
+
+        prompt = build_prompt(alert)
+        message = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        url = create_runbook(alertname, message.content[0].text)
+        send_discord(alert, url)
+```
+
+A few specific decisions worth explaining:
+
+**Claude Haiku over Sonnet.** Honestly if this tool were being used in production environment, I definitely wouldn't use Haiku. That said, Haiku is ~10x cheaper than Sonnet, let alone Opus. For a showcase tool, the cheaper the better.
+
+**Once-per-alert generation.** Early on I had the service regenerate the runbook on every alert firing. That was wasteful — the same `PodCrashLooping` alert could fire dozens of times a day in a busy cluster if a service you don't care about is down, and the generated content barely changes. Now the service checks if a runbook file for that alert already exists in the repo; if so, it skips the Claude call and just sends a Discord ping linking to the existing runbook. New alerts still generate fresh runbooks.
+
+**GitHub as the storage backend.** The obvious alternatives were a ConfigMap or a database. I'm also not receiving many alerts. On a much larger scale I would almost certainly not do this.
+
+**Discord for notifications.** I set up a private server just for homelab alerts. Alertmanager has native webhook support, Discord embeds render nicely, and I already have Discord open all the time on my personal devices.
+## Building out the alerting
+
+The runbook generator is only useful if alerts fire on real conditions. I wrote [PrometheusRule](https://prometheus-operator.dev/docs/user-guides/alerting/) manifests for:
+
+- Pod crashlooping, deployment unavailable, pod not ready
+- Node memory/disk/CPU pressure
+- ArgoCD application out of sync or degraded
+- Certificate expiring within 7 days (cert-manager)
+- Pi-hole down (DNS outage for the home network)
+
+These live in the `homelab-infra` repo and get picked up by the Prometheus Operator automatically. The full set is at [manifests/monitoring/prometheus-rules.yaml](https://github.com/Czarke/homelab-infra/blob/main/manifests/monitoring/prometheus-rules.yaml).
+
+## What broke
+
+A few things went sideways during the build.
+
+### The `"null"` receiver
+
+When I added an Alertmanager webhook receiver config to the kube-prometheus-stack Helm values, the Prometheus Operator started failing reconciliation:
+
+```
+sync "monitoring/kube-prom-kube-prometheus-alertmanager" failed:
+provision alertmanager configuration: failed to initialize from secret:
+undefined receiver "null" used in route
+```
+
+The chart auto-injects a sub-route for the `Watchdog` alert (a permanent test alert that's supposed to fire constantly to prove alerting is alive) pointing to a receiver named `"null"`. While doing the config for the receivers on my runbook generator, I deleted "null" thinking it was just a placeholder. The Operator then refused to apply the config because the auto-injected Watchdog route referenced a receiver that didn't exist.
+
+I just added back a receiver called `"null"`:
+
+```yaml
+receivers:
+  - name: "null"
+  - name: runbook-generator
+    webhook_configs:
+      - url: "http://runbook-generator..."
+```
+
+
+### The flood of default alerts
+
+Once the pipeline was live, Discord immediately got a wall of alerts I wasn't expecting:
+
+- `KubeProxyDown`
+- `TargetDown` x3 (for `kube-controller-manager`)
+- `etcdMembersDown`
+- `etcdInsufficientMembers`
+
+All of these are default alerts that ship with kube-prometheus-stack. None of them were real problems — they were artifacts of how my cluster is configured.
+
+**KubeProxyDown** was the easiest to explain. My cluster uses [Cilium with kube-proxy replacement](https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/), so `kube-proxy` no longer exists. I disabled that ServiceMonitor in the Helm values.
+
+The other three were all related. `kubeadm` — the tool I used to bootstrap the cluster — configures `kube-controller-manager`, `kube-scheduler`, and `etcd` to bind their metrics endpoints to `127.0.0.1` by default. This is a defense-in-depth choice: only processes running on the node itself can reach those endpoints. But Prometheus runs in a pod, and pods can't hit the node's `127.0.0.1`. Since Prometheus can't scrape those targets, you get a steady drip of alerts.
+
+The fix was editing the static pod manifests under `/etc/kubernetes/manifests/` on the control plane node to change the binding from `127.0.0.1` to `0.0.0.0`:
+
+```bash
+sudo sed -i 's|--bind-address=127.0.0.1|--bind-address=0.0.0.0|' \
+    /etc/kubernetes/manifests/kube-controller-manager.yaml
+sudo sed -i 's|--bind-address=127.0.0.1|--bind-address=0.0.0.0|' \
+    /etc/kubernetes/manifests/kube-scheduler.yaml
+sudo sed -i 's|--listen-metrics-urls=http://127.0.0.1:2381|--listen-metrics-urls=http://0.0.0.0:2381|' \
+    /etc/kubernetes/manifests/etcd.yaml
+```
+
+`kubelet` watches those files and automatically recreates the pods when they change. The `etcd` restart briefly takes the Kubernetes API offline (maybe 15 seconds on a single-control-plane cluster) but everything came back clean.
+
+This is worth thinking about from a security perspective. Changing the binding to `0.0.0.0` means any pod in the cluster can now reach those metrics endpoints, not just the node itself. For a homelab with a single tenant and no untrusted workloads, the risk is low — the endpoints still enforce TLS auth, and an attacker with pod execution already has bigger problems. For a production multi-tenant cluster, the right answer is a [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) restricting access to the Prometheus pod. I'll add one when I have a reason to.
+
+## What this actually gives me
+
+Now that the pipeline works, when something breaks on the cluster:
+
+1. Alertmanager groups related alerts, waits 30 seconds, then POSTs a webhook
+2. My service checks if a runbook for this alert exists already — if yes, it sends a Discord alert and stops. If not, it calls Claude, gets back a markdown runbook with likely causes and investigation commands, commits it to [`homelab-runbooks`](https://github.com/Czarke), and sends a Discord alert
+3. I get a Discord ping with a link, click through, and read AI-generated starting points for debugging
+
+For persistent alerts I get a reminder every hour (Alertmanager's `repeat_interval`), but the runbook itself is only generated once. This keeps both the token cost and the Git history bounded.
