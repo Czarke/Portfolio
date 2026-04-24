@@ -24,7 +24,7 @@ export default function BlogPage() {
             <Link key={post.slug} href={`/blog/${post.slug}`} className="block group">
               <article>
                 <div className="flex items-baseline justify-between gap-4">
-                  <h2 className="text-lg font-medium group-hover:text-neutral-300 transition-colors">
+                  <h2 className="text-lg font-medium group-hover:text-accent transition-colors">
                     {post.title}
                   </h2>
                   <span className="text-sm text-neutral-500 shrink-0">{post.date}</span>

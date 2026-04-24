@@ -12,14 +12,24 @@ export default async function Home() {
 
   return (
     <Container>
-      <section className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-8">
+      <section className="flex flex-col-reverse sm:flex-row sm:items-start sm:justify-between gap-8">
         <div>
           <h1 className="text-3xl font-bold">Sean Patterson</h1>
-          <p className="mt-2 text-neutral-400 text-lg">DevOps Engineer</p>
+          <p className="mt-2 text-neutral-400 text-lg">
+            DevOps engineer. On a career break in Tokyo, studying Japanese.
+          </p>
           <p className="mt-4 text-neutral-300 max-w-xl">
-            I&apos;m a DevOps engineer currently on break attending Japanese language school.
-            I use this site to document the infrastructure work I do on my home lab —
-            KVM virtualization, Kubernetes, and whatever else I&apos;m building.
+            Most of what&apos;s here is me documenting the work I do on my homelab — Kubernetes,
+            observability, and whatever else I&apos;m building. AI is the thing on my mind
+            constantly right now: a massive enabler, and a quiet source of anxiety about what it
+            means for the people (myself included) who build things for a living.
+          </p>
+          <p className="mt-4 text-neutral-300 max-w-xl">
+            Away from the terminal I&apos;ve been powerlifting for ten years — figuring out,
+            year by year, what that looks like as I get older and the desk hours stack up.
+            When I&apos;m not training, I&apos;m usually at the coffee shop down the road from
+            my apartment, playing with my Gaggimate and practicing my Japanese with the owner
+            and the regulars — my neighbors.
           </p>
         </div>
         <Image
@@ -40,7 +50,7 @@ export default async function Home() {
       <section className="mt-12">
         <div className="flex items-baseline justify-between mb-6">
           <h2 className="text-xl font-semibold">Recent Posts</h2>
-          <Link href="/blog" className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors">
+          <Link href="/blog" className="text-sm text-neutral-400 hover:text-accent transition-colors">
             All posts →
           </Link>
         </div>
@@ -49,7 +59,7 @@ export default async function Home() {
             <Link key={post.slug} href={`/blog/${post.slug}`} className="block group">
               <article>
                 <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="font-medium group-hover:text-neutral-300 transition-colors">
+                  <h3 className="font-medium group-hover:text-accent transition-colors">
                     {post.title}
                   </h3>
                   <span className="text-sm text-neutral-500 shrink-0">{post.date}</span>

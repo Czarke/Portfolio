@@ -29,9 +29,9 @@ export default function Navbar() {
           ? "bg-neutral-900/90 border-neutral-700 shadow-lg shadow-black/40"
           : "bg-neutral-900/80 border-neutral-800"
       }`}>
-        <Link href="/" className="hover:text-neutral-100 transition-colors">Home</Link>
-        <Link href="/blog" className="hover:text-neutral-100 transition-colors">Blog</Link>
-        <a href="https://github.com/Czarke" className="hover:text-neutral-100 transition-colors">GitHub</a>
+        <Link href="/" className="hover:text-accent transition-colors">Home</Link>
+        <Link href="/blog" className="hover:text-accent transition-colors">Blog</Link>
+        <a href="https://github.com/Czarke" className="hover:text-accent transition-colors">GitHub</a>
       </div>
     </nav>
   );
