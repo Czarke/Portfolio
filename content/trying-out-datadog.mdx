@@ -1,0 +1,164 @@
+---
+title: "Trying out Datadog"
+date: "2026-05-14"
+description: "Adding Datadog to a homelab for resume reasons turned into a cascade of platform hygiene work I'd been overlooking"
+---
+
+A few weeks back I noticed something while reading through Tokyo DevOps and SRE postings: **Datadog was on almost every job description.** Seven of the nine postings I'd been targeting listed it explicitly.
+
+I don't have production Datadog experience. I do have years of Prometheus and Grafana, which covers a similar surface area, but "experience with Datadog" is a keyword filter on most ATS pipelines and I'd rather be honest about *some* exposure than be filtered out for none.
+
+So I decided to add Datadog to my homelab. Not because the homelab needed it — my existing Prometheus stack does everything I actually need — but to see the tool, run it alongside what I have, and eventually write up how the two compare. Exposure work.
+
+That comparison is a separate post I haven't written yet, because I never actually got that far. Setting up Datadog kicked off a cascade of unrelated cleanup that ate the entire exercise. This post is about that cascade — the comparison will come later, once both stacks have been running side by side long enough to say anything honest about them. The Datadog install itself ended up being maybe the third most interesting thing that happened.
+
+## The install
+
+Datadog has a free trial. The Linux agent went on my KVM host. For the Kubernetes cluster, the official [Datadog Helm chart](https://github.com/DataDog/helm-charts) deploys both an agent DaemonSet (per-node) and a Cluster Agent (control plane component for cluster-wide telemetry).
+
+I wired it up as an ArgoCD app like everything else in the homelab — manifest in `homelab-infra`, image pinned, secret holding the API key created out-of-band. The first install failed because I'd put the secret in the wrong region — Datadog routed my Tokyo signup to AP1, not the default US1 site. After fixing the `site:` value, everything came up.
+
+## The first complication
+
+To make the Datadog dashboards useful I wanted real Cilium metrics, since Cilium is what runs the cluster's networking. Cilium ships a Prometheus exporter on port 9962, but it's not enabled by default. Patching the `cilium-config` ConfigMap to set `prometheus-serve-addr: ":9962"` got the agent listening.
+
+Datadog's autodiscovery picked up Cilium metrics immediately. I also pointed Prometheus at the same endpoint via a `PodMonitor`, and pulled in the popular community Grafana dashboards for Cilium ([16611](https://grafana.com/grafana/dashboards/16611-cilium-metrics/) and [16612](https://grafana.com/grafana/dashboards/16612-cilium-operator/)).
+
+This is where it got interesting.
+
+## A dashboard configuration problem that wasn't really about Datadog
+
+Both Cilium dashboards loaded but only the operator one had data. The agent dashboard showed a `Datasource ${DS_Prometheus} not found` error on its `pod` variable dropdown. Every panel said "no data."
+
+The error was misleading. The datasource resolved fine — the variable wasn't *finding* anything to populate the dropdown. Its query filtered by `k8s_app="cilium"`, but my Prometheus didn't have a `k8s_app` label on any Cilium metric.
+
+The reason was upstream of Datadog entirely. The community Cilium dashboards are written assuming a Helm-installed Cilium where the chart's PodMonitor template propagates a specific set of pod labels onto each metric. My Cilium was technically a Helm release (the `cilium install` CLI is a thin wrapper around Helm) but I'd built my own `PodMonitor` from scratch and only relabeled what I'd noticed I needed. The dashboards' label expectations and my PodMonitor's relabel rules didn't match.
+
+I could have fixed the queries on each panel manually. But the more telling thing was that this was clearly going to keep happening — every off-the-shelf Cilium dashboard or operator-config would expect labels I hadn't propagated. Whack-a-mole was a losing game.
+
+## Bringing Cilium under ArgoCD
+
+The fix that made the most sense was bringing Cilium under proper GitOps management. The release was already Helm-managed; it just wasn't in ArgoCD. Every other component in the cluster lived in `homelab-infra` and reconciled automatically. Cilium was the lone outlier — managed by a CLI install that I'd manually patched twice.
+
+Adoption was straightforward in theory: create an ArgoCD `Application` pointing at the same Helm chart, with values matching the live install, and ArgoCD would take over reconciliation without recreating anything. I extracted the current values via `helm get values cilium -n kube-system` and built the manifest.
+
+The diff in ArgoCD was clean except for one thing: a Secret was changing on every render. I dug into what it was — a Hubble TLS certificate. (Hubble is Cilium's observability layer; I wasn't really using it, but it's enabled by default.)
+
+The drift happened because the chart generates those certs with Helm template functions and only reuses existing ones when Helm runs against a live cluster. ArgoCD renders with `helm template`, which has no cluster access, so every sync would mint fresh certs and flag drift forever.
+
+Rather than disable Hubble or suppress the diff, I switched its TLS to cert-manager — and since I was already in there, gave the homelab a proper internal CA:
+
+```yaml
+# Bootstrap issuer used only to sign the internal CA below.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+# Internal CA cert. Signed by the bootstrap issuer.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: homelab-ca
+  secretName: homelab-ca-key-pair
+  duration: 87600h  # 10 years
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+---
+# The actual issuer for internal services.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: homelab-ca-issuer
+spec:
+  ca:
+    secretName: homelab-ca-key-pair
+```
+
+A self-signed issuer that signs an internal CA, plus a `ClusterIssuer` that uses it to sign in-cluster certs. Hubble TLS flows through this now, and any future internal service can use the same issuer. Not strictly necessary for the Datadog work — but the diff was the prompt to set up something I'd have wanted eventually anyway.
+
+## "Where did my dashboards go"
+
+A few hours after I finished the Cilium migration I came back to find the Grafana admin password reverted to the default and the Cilium dashboards I'd imported via the UI were gone.
+
+The root cause is that **Grafana stores all UI-driven state in a SQLite database in the pod's ephemeral storage.** The Helm chart doesn't enable persistence by default. Every pod restart wipes everything: dashboards imported through the UI, password changes, datasource modifications, anything.
+
+In my defense, this is the kind of thing you only trip over the first time you actually lean on it. Up to now I'd rarely touched Grafana beyond the default dashboards — which ship as ConfigMaps and survive restarts just fine, so nothing ever looked wrong. The first dashboards I imported through the UI were the Cilium ones, and they evaporated within a day. Lesson learned the traditional way.
+
+Two ways to fix this. Either enable Grafana persistence with a real PVC, or stop importing dashboards through the UI and manage them as code.
+
+I went with the code path, and not just as a reaction to this. At my last role the team was in the middle of a slow, painful migration away from hand-built UI dashboards toward managing everything as code — years of accumulated panels that lived only in someone's Grafana instance, with no version history and no way to reproduce them if the instance died. I watched how much friction that created. Starting my own observability setup the same way would have been repeating a mistake I'd already seen play out. Better to begin with dashboards and alerts as code than to migrate to it under duress later.
+
+```yaml
+grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  dashboards:
+    default:
+      cilium-metrics:
+        gnetId: 16611
+        revision: 1
+        datasource: Prometheus
+      cilium-operator:
+        gnetId: 16612
+        revision: 1
+        datasource: Prometheus
+```
+
+The `gnetId` block tells the kube-prometheus-stack Helm chart to download those dashboards from grafana.com at install time and create ConfigMaps for them. The Grafana sidecar loads the ConfigMaps on startup. Dashboard state lives in git, not in pod ephemeral storage. Same approach for the admin password — moved to a Secret created out-of-band.
+
+This is the "right" answer regardless of how you feel about ephemeral storage. Dashboards-as-code means a fresh Grafana pod boots up identical to the last one. Reproducible, version-controlled, immune to UI accidents.
+
+What it does *not* do is make off-the-shelf dashboards magically work. The `gnetId` approach loads the exact same dashboard JSON the UI import did — so the original label-mismatch problem is still there. A community dashboard that filters on `k8s_app="cilium"` still returns nothing if my metrics don't carry that label, whether it was imported by hand or loaded from a ConfigMap. Persisting the dashboard and making the dashboard *correct* are two separate problems; this only solved the first. The real, durable takeaway is less glamorous: any time you pull a dashboard you didn't write, check what labels its queries expect against what your metrics actually carry, and fix the relabeling on your side. There's no setting that does that for you.
+
+## "Wait, are my metrics also ephemeral?"
+
+Yes. Of course they were.
+
+Same root cause as Grafana: kube-prometheus-stack doesn't enable persistence by default. Prometheus's TSDB was on `emptyDir`. Every restart of the Prometheus pod — manual sync, node maintenance, OOM, anything — silently nuked all metric history.
+
+A monitoring stack that can't remember anything past its last restart is a strong contender for "least useful monitoring stack." Not my finest hour — but I'll take discovering it on a homelab over discovering it in an incident review.
+
+The fix needed actual storage. Local-path-provisioner (the same tool that ships with k3s by default) installs in a few minutes via Helm chart and turns directories on each node's local disk into PVs. Once it was running, enabling persistence on Prometheus was a few lines in the Helm values:
+
+```yaml
+prometheus:
+  prometheusSpec:
+    retention: 30d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: local-path
+          resources:
+            requests:
+              storage: 20Gi
+```
+
+Same pattern for Alertmanager (its silences and grouping state were also ephemeral). One last metrics blackout while Prometheus rolled with the new PVC, and from that moment on the homelab actually retains history.
+
+## What this all said
+
+I added Datadog because seven postings asked for it. Three weeks later the actual changes to my homelab are:
+
+1. Cilium is properly under ArgoCD, not a CLI install I'd hand-patched
+2. An internal CA exists for in-cluster TLS, with cert-manager managing rotation
+3. Dashboards are declared in git and survive pod restarts
+4. The admin password is in a Secret instead of a Helm value
+5. Prometheus and Alertmanager have persistent storage and actually retain state
+6. There's a side note that Datadog is also installed
+
+The Datadog install was 90 minutes of work. Everything else was the cleanup it surfaced. None of those changes were strictly necessary — the cluster was running fine. But all of them were things I'd quietly known were technical debt and quietly postponed.
+
+The lesson I take from this — and the reason I think the resume-driven framing is actually fine — is that **the practice of introducing a "useless" tool can force you to look at parts of your system you've been avoiding.** I wouldn't have noticed that Prometheus was on `emptyDir` if I hadn't gone looking for ways to make a tool I didn't need useful. The dashboard issue surfaced a label-propagation problem that affected every off-the-shelf dashboard I might ever want to import. The CLI-installed Cilium was a footgun waiting to happen — manual patches, no GitOps, drift on every restart.
+
+Resume-driven development is real, and it's not always bad. Sometimes the most productive thing you can do is set yourself a task you don't strictly need to do, and pay attention to what breaks.
