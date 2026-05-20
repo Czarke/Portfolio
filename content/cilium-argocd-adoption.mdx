@@ -1,0 +1,198 @@
+---
+title: "Bringing Cilium under ArgoCD without reinstalling it"
+date: "2026-05-20"
+description: "Adopting an existing Helm release under ArgoCD on a live Kubernetes cluster, plus the Hubble TLS drift problem that surfaces along the way."
+---
+
+My homelab cluster runs everything under ArgoCD — the portfolio site, monitoring stack, cert-manager, Pi-hole, the runbook generator. Except Cilium. Cilium got installed at cluster bootstrap time via `cilium install` and had been sitting outside GitOps ever since. I'd manually patched the `cilium-config` ConfigMap twice to enable Prometheus metrics, and that drift was happily living outside of version control.
+
+This post is about bringing Cilium under ArgoCD management.
+
+## The starting state
+
+Cilium was running fine. v1.19.1, with kube-proxy replacement, Gateway API support, and the ConfigMap patched manually to expose Prometheus metrics on port 9962. Everything worked. It just wasn't reconciled by anything. If I rebuilt the cluster, I'd have to remember those patches and apply them by hand again.
+
+I figured it was time for some hygiene work.
+
+## The surprise: `cilium install` is Helm
+
+At first, I thought I'd have to go looking for a helm distribution of Cilium. When I pulled the live ConfigMap to start planning the migration, I noticed something at the bottom:
+
+```yaml
+metadata:
+  annotations:
+    meta.helm.sh/release-name: cilium
+    meta.helm.sh/release-namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+```
+
+Cilium was *already* a Helm release. `cilium install` is just helm underneath, as it turns out.
+
+This changed the migration substantially. I didn't need to teach ArgoCD how to deploy Cilium from scratch — I needed to have ArgoCD reconcile a Helm release that already existed.
+
+## The adoption strategy
+
+Two paths were on the table.
+
+**Tear down and reinstall.** Run `cilium uninstall`, then let ArgoCD deploy fresh from the chart. Easy to reason about, but every workload on the cluster loses pod-to-pod networking during the gap. For my homelab this would be fine (Pi-hole has fallback DNS at the router, the portfolio site stays up on Amplify), but why take the cluster down if I don't need to?
+
+**Adopt the existing release.** Create an ArgoCD `Application` pointing at the same Helm chart with the same release name and namespace. If everything matches what's already in the cluster, ArgoCD just starts reconciling what's there. No uninstall, no recreate, no downtime.
+
+Adoption only works if three things line up: the Helm release name in the `Application` matches the existing release name, the destination namespace matches, and the chart values match the live install closely enough that ArgoCD doesn't think it needs to recreate everything. If any of those drift, ArgoCD sees the existing resources as "out of scope" and tries to create new ones alongside them, which is exactly the failure mode we're trying to avoid.
+
+## Capturing the current values
+
+Helm gives you the user-supplied values for any release:
+
+```bash
+helm get values cilium -n kube-system
+```
+
+Output:
+
+```yaml
+USER-SUPPLIED VALUES:
+cluster:
+  name: kubernetes
+gatewayAPI:
+  enabled: true
+ipam:
+  mode: kubernetes
+k8sServiceHost: <control-plane-ip>
+k8sServicePort: 6443
+kubeProxyReplacement: true
+operator:
+  replicas: 1
+routingMode: tunnel
+tunnelProtocol: vxlan
+```
+
+These are the *non-default* values that were passed to the original install. Everything else uses chart defaults. This is the minimum set I needed to reproduce.
+
+Note what's *not* in here: the Prometheus metrics settings I'd patched directly into the ConfigMap. Those existed in the live cluster but not in any Helm values. Adopting the release as-is would tell ArgoCD to revert those patches, since they weren't part of the desired state. The fix was to add `prometheus.enabled: true` to the values so the chart itself produces the metrics-enabled ConfigMap, instead of relying on my hand-patches. Cleaner, and now version-controlled.
+
+## The Application manifest
+
+The full thing:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://helm.cilium.io
+    chart: cilium
+    targetRevision: "1.19.1"
+    helm:
+      releaseName: cilium
+      values: |
+        cluster:
+          name: kubernetes
+        gatewayAPI:
+          enabled: true
+        ipam:
+          mode: kubernetes
+        k8sServiceHost: <control-plane-ip>
+        k8sServicePort: 6443
+        kubeProxyReplacement: true
+        routingMode: tunnel
+        tunnelProtocol: vxlan
+        prometheus:
+          enabled: true
+        operator:
+          replicas: 1
+          prometheus:
+            enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true
+```
+
+Two things I deliberately did not include initially: `automated` sync and `prune`. The first sync had to be manual so I could look at the diff before applying it. The second is a permanent decision — `prune: true` on a CNI is dangerous. Accidentally pruning a Cilium CRD or DaemonSet would break all pod networking. I'd rather wait for a controlled fix than have ArgoCD remove something it thinks is no longer needed.
+
+`targetRevision` is pinned to `1.19.1` because the live cluster was on `1.19.1` and the whole point of adoption was to match what was already running. Upgrading is a separate decision for another day.
+
+## The diff
+
+After ArgoCD picked up the new app, it sat at "OutOfSync" — which was exactly what I wanted. Time to look at the diff before approving anything.
+
+Most resources showed as already deployed. The chart's CRDs, the agent DaemonSet, the operator Deployment, the ConfigMap, the ServiceAccounts — all already in the cluster, all matching what the chart wanted to produce. A few cosmetic differences (annotations the chart adds, label tweaks), none structurally meaningful.
+
+One thing stood out: a Secret I didn't recognize kept showing as changing on every render. It turned out to be a Hubble TLS certificate — Hubble being Cilium's in-cluster observability layer, which is enabled by default. The drift was happening because the chart's default cert-generation mode can't see existing certs when Helm renders without a live-cluster connection (which is how ArgoCD renders), so every sync minted fresh certs.
+
+I could have disabled Hubble or suppressed the diff. The longer-term fix was to switch Hubble's cert management to cert-manager — and since I was already there, give the homelab a proper internal CA:
+
+```yaml
+# Bootstrap issuer used only to sign the internal CA below.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+# Internal CA cert. Signed by the bootstrap issuer.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: homelab-ca
+  secretName: homelab-ca-key-pair
+  duration: 87600h  # 10 years
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+---
+# The issuer for internal services.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: homelab-ca-issuer
+spec:
+  ca:
+    secretName: homelab-ca-key-pair
+```
+
+A self-signed issuer that signs an internal CA, plus a `ClusterIssuer` that uses the CA to sign in-cluster certs. The Cilium values were updated to point Hubble at the new issuer via `hubble.tls.auto.method: certmanager`. ArgoCD's renders became deterministic again, and the homelab gained a reusable internal CA — useful for whatever future in-cluster service needs TLS.
+
+## Validation, then auto-sync
+
+After applying the manifest:
+
+```bash
+kubectl get pods -A | grep -v Running | grep -v Completed
+```
+
+returned nothing — no workload was broken by the sync. The Cilium pods were the same instances as before (the adoption didn't restart them), the Hubble certs got reissued by cert-manager, the diff settled clean.
+
+I then enabled automated sync:
+
+```yaml
+syncPolicy:
+  automated:
+    prune: false
+    selfHeal: true
+  syncOptions:
+    - ServerSideApply=true
+```
+
+`selfHeal: true` is safe — it patches existing resources back to spec, never deletes. `prune: false` is the line I will not cross. If I want to remove a Cilium resource I'll do it deliberately, not let ArgoCD do it for me.
+
+## Closing thoughts
+
+The pattern this article describes — adopt an existing Helm release under a GitOps tool by matching release name, namespace, and chart values — generalizes to any chart you didn't originally install via your GitOps system. Most "I installed this with the CLI / helm install" tools have an equivalent path. Worth knowing, because the alternative (tear down and reinstall) is risky for stateful or networking-critical components.
+
+The unrecognized Secret was the only real snag, and the side effect of resolving it was an internal CA I had been meaning to set up anyway.
