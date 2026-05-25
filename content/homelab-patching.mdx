@@ -1,0 +1,71 @@
+---
+title: "Patching the homelab without the 4am page"
+date: "2026-05-22"
+description: "Automating OS updates and kernel reboots across a homelab Kubernetes cluster — and muting the alerts so routine overnight reboots don't wake me up."
+---
+
+Every time I SSH into the homelab — the KVM host or any of the three cluster VMs — I get the same message: *X updates can be applied immediately.* I don't want to apply these manually.
+
+I wanted it handled automatically. My first instinct was an agent: something that reads the changelog for each pending update, cross-references it against my homelab repo to see whether anything I run is actually affected, and then either applies the update or emails me.
+
+The flaw is in that cross-reference step. I was picturing the agent with my whole codebase in context — but an OS package changelog and a directory of Kubernetes manifests don't have a meaningful join. A patch to `libssl3` or some systemd library doesn't map to anything in my repo; the agent would have both inputs in front of it and still be guessing. And it's a recurring job — every update cycle I'd be paying for it to re-read everything and re-derive the same non-answer. Meanwhile the security update stream is *designed* to be safe to apply blind, so there's little to judge in the first place. Makes me wonder how much I reach for AI when I don't actually need it.
+
+So I implemented 3 proven pieces instead.
+
+## 1. unattended-upgrades
+
+Ubuntu already ships `unattended-upgrades`, and it was already enabled on all four machines — for *security* updates only. Most of my pending updates weren't security, they were the regular `-updates` pocket, which the default config deliberately leaves alone.
+
+One override file fixes it:
+
+```
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-updates";
+};
+```
+
+On the cluster VMs, `kubeadm`, `kubelet`, and `kubectl` are held back (the kubeadm installer does this automatically), so an auto-upgrade can never bump a Kubernetes component out of band. Those upgrades stay a manual procedure.
+
+## 2. kured, for the reboots
+
+unattended-upgrades installs kernel updates but won't reboot to activate them — and on a cluster you can't just reboot a node out from under its pods (well, you can...). They need to move first.
+
+[kured](https://kured.dev/) (KUbernetes REboot Daemon) handles that. It watches each node for `/var/run/reboot-required` — the flag unattended-upgrades sets after staging a kernel — and when it sees one, it grabs a cluster-wide lock, cordons and drains the node, reboots it, then uncordons it. The lock means only one node ever reboots at a time.
+
+I gave it a window:
+
+```yaml
+configuration:
+  period: 1h
+  startTime: "04:00"
+  endTime: "05:30"
+  timeZone: Asia/Tokyo
+```
+
+A kernel that lands during the day gets applied at 4am, one node at a time, while I'm asleep.
+
+## 3. Muting the alerts
+
+Here's the part specific to running this at home. Even a *completely successful* kured reboot trips alerts — the node goes NotReady, its pods go down for a couple of minutes. Without handling that, every healthy 4am reboot would page me.
+
+The fix is an Alertmanager mute time interval:
+
+```yaml
+time_intervals:
+  - name: overnight-maintenance
+    time_intervals:
+      - times:
+          - start_time: "03:45"
+            end_time: "08:00"
+        location: Asia/Tokyo
+route:
+  mute_time_intervals:
+    - overnight-maintenance
+```
+
+Alerts that fire during the window stay silent. Anything *still firing* when the window closes notifies at 08:00. A routine reboot clears long before then and I never see it — but a node that didn't come back surfaces in the morning, at a civil hour, instead of at 4am.
+
+## The homelab-versus-production line
+
+In a production environment I would absolutely want the 3am page if a node didn't come back. That's the job. The mute window is a deliberate *downgrade* of my own alerting, and it's only defensible because the cost/benefit is different for a cluster that I only use for personal development — a few hours of delayed awareness costs me nothing here, but would cost a real service its SLO.
+
