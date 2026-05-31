@@ -30,8 +30,8 @@ export default function Navbar() {
           : "bg-neutral-900/80 border-neutral-800"
       }`}>
         <Link href="/" className="hover:text-accent transition-colors">Home</Link>
-        <Link href="/blog" className="hover:text-accent transition-colors">Blog</Link>
-        <Link href="/personal" className="hover:text-accent transition-colors">Personal</Link>
+        <Link href="/blog" className="hover:text-accent transition-colors">Technical Blog</Link>
+        <Link href="/personal" className="hover:text-accent transition-colors">Personal Blog</Link>
         <a href="https://github.com/Czarke" className="hover:text-accent transition-colors">GitHub</a>
       </div>
     </nav>
