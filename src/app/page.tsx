@@ -8,7 +8,7 @@ import Image from "next/image";
 export const revalidate = 3600;
 
 export default async function Home() {
-  const posts = getAllPosts().slice(0, 3);
+  const posts = getAllPosts("blog").slice(0, 3);
 
   return (
     <Container>

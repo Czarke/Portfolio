@@ -11,16 +11,16 @@ type Props = {
 };
 
 export async function generateStaticParams() {
-  return getAllSlugs("blog");
+  return getAllSlugs("personal");
 }
 
 export async function generateMetadata(
   { params }: Props
 ): Promise<Metadata> {
   const { slug } = await params;
-  const post = getPostBySlug("blog", slug);
+  const post = getPostBySlug("personal", slug);
 
-  const url = `https://seanpatterson.me/blog/${slug}`;
+  const url = `https://seanpatterson.me/personal/${slug}`;
 
   return {
     title: post.meta.title,
@@ -34,9 +34,9 @@ export async function generateMetadata(
   };
 }
 
-export default async function PostPage({ params }: Props) {
+export default async function PersonalPostPage({ params }: Props) {
   const { slug } = await params;
-  const post = getPostBySlug("blog", slug);
+  const post = getPostBySlug("personal", slug);
 
   return (
     <BlogPostLayout title={post.meta.title}>

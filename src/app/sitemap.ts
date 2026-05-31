@@ -2,10 +2,16 @@ import { getAllPosts } from "@/lib/posts";
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const posts = getAllPosts();
+  const blogPosts = getAllPosts("blog");
+  const personalPosts = getAllPosts("personal");
 
-  const postEntries = posts.map((post) => ({
+  const blogEntries = blogPosts.map((post) => ({
     url: `https://seanpatterson.me/blog/${post.slug}`,
+    lastModified: new Date(post.date),
+  }));
+
+  const personalEntries = personalPosts.map((post) => ({
+    url: `https://seanpatterson.me/personal/${post.slug}`,
     lastModified: new Date(post.date),
   }));
 
@@ -18,6 +24,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: "https://seanpatterson.me/blog",
       lastModified: new Date(),
     },
-    ...postEntries,
+    {
+      url: "https://seanpatterson.me/personal",
+      lastModified: new Date(),
+    },
+    ...blogEntries,
+    ...personalEntries,
   ];
 }

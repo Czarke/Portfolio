@@ -31,6 +31,7 @@ export default function Navbar() {
       }`}>
         <Link href="/" className="hover:text-accent transition-colors">Home</Link>
         <Link href="/blog" className="hover:text-accent transition-colors">Blog</Link>
+        <Link href="/personal" className="hover:text-accent transition-colors">Personal</Link>
         <a href="https://github.com/Czarke" className="hover:text-accent transition-colors">GitHub</a>
       </div>
     </nav>

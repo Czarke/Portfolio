@@ -2,7 +2,11 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
-const postsDirectory = path.join(process.cwd(), "content");
+export type Section = "blog" | "personal";
+
+const contentRoot = path.join(process.cwd(), "content");
+
+const sectionDir = (section: Section) => path.join(contentRoot, section);
 
 export type Frontmatter = {
   title: string;
@@ -19,12 +23,16 @@ export type Post = {
   content: string;
   meta: Frontmatter;
 };
-export function getAllPosts(): PostMeta[] {
-  const files = fs.readdirSync(postsDirectory);
+
+export function getAllPosts(section: Section): PostMeta[] {
+  const dir = sectionDir(section);
+  if (!fs.existsSync(dir)) return [];
+
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".mdx"));
 
   const posts = files.map((file) => {
     const slug = file.replace(/\.mdx$/, "");
-    const fullPath = path.join(postsDirectory, file);
+    const fullPath = path.join(dir, file);
     const fileContents = fs.readFileSync(fullPath, "utf8");
 
     const { data } = matter(fileContents);
@@ -38,14 +46,13 @@ export function getAllPosts(): PostMeta[] {
     };
   });
 
-  // Sort newest first
   return posts.sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 }
 
-export function getPostBySlug(slug: string): Post {
-  const fullPath = path.join(postsDirectory, `${slug}.mdx`);
+export function getPostBySlug(section: Section, slug: string): Post {
+  const fullPath = path.join(sectionDir(section), `${slug}.mdx`);
   const fileContents = fs.readFileSync(fullPath, "utf8");
 
   const { content, data } = matter(fileContents);
@@ -58,10 +65,12 @@ export function getPostBySlug(slug: string): Post {
   };
 }
 
-export function getAllSlugs(): { slug: string }[] {
-  const files = fs.readdirSync(postsDirectory);
+export function getAllSlugs(section: Section): { slug: string }[] {
+  const dir = sectionDir(section);
+  if (!fs.existsSync(dir)) return [];
 
-  return files.map((file) => ({
-    slug: file.replace(/\.mdx$/, ""),
-  }));
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".mdx"))
+    .map((file) => ({ slug: file.replace(/\.mdx$/, "") }));
 }
