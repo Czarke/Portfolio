@@ -1,0 +1,51 @@
+---
+title: "My DNS server was a pod that needed DNS to start"
+date: "2026-06-14"
+description: "The first time my homelab went fully down: a circular bootstrap dependency where the cluster couldn't pull images because its DNS server was a pod inside the cluster that hadn't started yet."
+---
+
+The homeserver went down this morning, and when it came back I got my first real outage of the homelab cluster, the kind where nothing comes up and the cause isn't clear.
+
+The symptom was clear enough. The KVM host rebooted, the three VMs came back, but most of the pods were stuck:
+
+```bash
+kubectl get pods -A | grep -vE 'Running|Completed'
+# a wall of ImagePullBackOff and ErrImagePull
+```
+
+Image pulls were failing. My first instinct was the registry or a network problem, but the LAN was fine, the nodes had IPs, Tailscale was connected. Then I tried to resolve a hostname on one of the nodes:
+
+```bash
+resolvectl query ghcr.io
+# nothing, name does not resolve
+```
+
+DNS was dead on the nodes.
+
+## The dependency loop
+
+I run Pi-hole for DNS across my devices. The way I'd wired it up, the Tailscale global nameserver override points everything, including the three cluster nodes, at the Pi-hole IP. Clean and convenient: one resolver, ad-blocking everywhere.
+
+The problem is what Pi-hole *is*. It's a pod. It runs inside the very cluster that was trying to start, pinned to the control-plane node. So the chain on a cold boot looks like this:
+
+1. The nodes' DNS points at Pi-hole.
+2. Pi-hole is a pod that hasn't started yet.
+3. To start it, the kubelet needs to pull its image from a registry.
+4. To reach the registry, it needs to resolve `ghcr.io`.
+5. To resolve anything, it needs DNS, which points back at the pod from step 2.
+
+The DNS server needed DNS to start. Every pod that needed an image was waiting on a resolver that was itself waiting on an image pull. Nothing could move.
+
+It had worked fine through three months and a handful of reboots. It works *if* Pi-hole's image happens to already be cached on the node it lands on, and then that one pod can start without a network pull, DNS comes alive, and the rest of the cluster cascades back to healthy. That's not resilient. The image cache was quietly saving me until it didn't.
+
+## The fix took about a minute
+
+The recovery, once I understood it, was anticlimactic. From my phone, on LTE, deliberately *not* behind the broken Pi-hole, I opened the Tailscale admin console and toggled the Pi-hole nameserver override off. The nodes fell back to their DHCP-provided resolver, started pulling images, Pi-hole came up, and the cluster drained back to green. Then I turned the override back on so my laptop and phone got their ad-blocking back.
+
+The detail I want to remember: **disable it from a device that isn't using Pi-hole.** If I'd tried to reach the admin console from a machine pointed at the dead resolver, I'd have been fighting the same outage to fix the outage. The Tailscale control plane is cloud-hosted, so any phone with signal works.
+
+## What I actually learned
+
+The real lesson isn't "Pi-hole bad." It's about **dependencies**: the things a system needs *in order to start*, which are a different and nastier category than the things it needs to *run*. A cluster can tolerate its DNS server restarting once everything's up. It cannot tolerate that DNS server being a prerequisite for its own boot. Hosting critical infrastructure inside the thing that depends on it creates a loop that's invisible right up until a cold start exposes it.
+
+There's a proper fix: decouple the nodes so they never resolve through Pi-hole: `accept-dns=false` on the VMs plus a pinned upstream like `1.1.1.1` in netplan. Then the override can stay on permanently for client devices and the nodes simply ignore it.
