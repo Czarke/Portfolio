@@ -4,7 +4,7 @@ date: "2026-05-20"
 description: "Adopting an existing Helm release under ArgoCD on a live Kubernetes cluster, plus the Hubble TLS drift problem that surfaces along the way."
 ---
 
-My homelab cluster runs everything under ArgoCD — the portfolio site, monitoring stack, cert-manager, Pi-hole, the runbook generator. Except Cilium. Cilium got installed at cluster bootstrap time via `cilium install` and had been sitting outside GitOps ever since. I'd manually patched the `cilium-config` ConfigMap twice to enable Prometheus metrics, and that drift was happily living outside of version control.
+My homelab cluster runs everything under ArgoCD: the portfolio site, monitoring stack, cert-manager, Pi-hole, the runbook generator. Except Cilium. Cilium got installed at cluster bootstrap time via `cilium install` and had been sitting outside GitOps ever since. I'd manually patched the `cilium-config` ConfigMap twice to enable Prometheus metrics, and that drift was happily living outside of version control.
 
 This post is about bringing Cilium under ArgoCD management.
 
@@ -29,7 +29,7 @@ metadata:
 
 Cilium was *already* a Helm release. `cilium install` is just helm underneath, as it turns out.
 
-This changed the migration substantially. I didn't need to teach ArgoCD how to deploy Cilium from scratch — I needed to have ArgoCD reconcile a Helm release that already existed.
+This changed the migration substantially. I didn't need to teach ArgoCD how to deploy Cilium from scratch. I needed to have ArgoCD reconcile a Helm release that already existed.
 
 ## The adoption strategy
 
@@ -118,19 +118,19 @@ spec:
       - ServerSideApply=true
 ```
 
-Two things I deliberately did not include initially: `automated` sync and `prune`. The first sync had to be manual so I could look at the diff before applying it. The second is a permanent decision — `prune: true` on a CNI is dangerous. Accidentally pruning a Cilium CRD or DaemonSet would break all pod networking. I'd rather wait for a controlled fix than have ArgoCD remove something it thinks is no longer needed.
+Two things I deliberately did not include initially: `automated` sync and `prune`. The first sync had to be manual so I could look at the diff before applying it. The second is a permanent decision: `prune: true` on a CNI is dangerous. Accidentally pruning a Cilium CRD or DaemonSet would break all pod networking. I'd rather wait for a controlled fix than have ArgoCD remove something it thinks is no longer needed.
 
 `targetRevision` is pinned to `1.19.1` because the live cluster was on `1.19.1` and the whole point of adoption was to match what was already running. Upgrading is a separate decision for another day.
 
 ## The diff
 
-After ArgoCD picked up the new app, it sat at "OutOfSync" — which was exactly what I wanted. Time to look at the diff before approving anything.
+After ArgoCD picked up the new app, it sat at "OutOfSync", which was exactly what I wanted. Time to look at the diff before approving anything.
 
-Most resources showed as already deployed. The chart's CRDs, the agent DaemonSet, the operator Deployment, the ConfigMap, the ServiceAccounts — all already in the cluster, all matching what the chart wanted to produce. A few cosmetic differences (annotations the chart adds, label tweaks), none structurally meaningful.
+Most resources showed as already deployed. The chart's CRDs, the agent DaemonSet, the operator Deployment, the ConfigMap, the ServiceAccounts, all already in the cluster, all matching what the chart wanted to produce. A few cosmetic differences (annotations the chart adds, label tweaks), none structurally meaningful.
 
-One thing stood out: a Secret I didn't recognize kept showing as changing on every render. It turned out to be a Hubble TLS certificate — Hubble being Cilium's in-cluster observability layer, which is enabled by default. The drift was happening because the chart's default cert-generation mode can't see existing certs when Helm renders without a live-cluster connection (which is how ArgoCD renders), so every sync minted fresh certs.
+One thing stood out: a Secret I didn't recognize kept showing as changing on every render. It turned out to be a Hubble TLS certificate. Hubble is Cilium's in-cluster observability layer, which is enabled by default. The drift was happening because the chart's default cert-generation mode can't see existing certs when Helm renders without a live-cluster connection (which is how ArgoCD renders), so every sync minted fresh certs.
 
-I could have disabled Hubble or suppressed the diff. The longer-term fix was to switch Hubble's cert management to cert-manager — and since I was already there, give the homelab a proper internal CA:
+I could have disabled Hubble or suppressed the diff. The longer-term fix was to switch Hubble's cert management to cert-manager, and since I was already there, give the homelab a proper internal CA:
 
 ```yaml
 # Bootstrap issuer used only to sign the internal CA below.
@@ -166,7 +166,7 @@ spec:
     secretName: homelab-ca-key-pair
 ```
 
-A self-signed issuer that signs an internal CA, plus a `ClusterIssuer` that uses the CA to sign in-cluster certs. The Cilium values were updated to point Hubble at the new issuer via `hubble.tls.auto.method: certmanager`. ArgoCD's renders became deterministic again, and the homelab gained a reusable internal CA — useful for whatever future in-cluster service needs TLS.
+A self-signed issuer that signs an internal CA, plus a `ClusterIssuer` that uses the CA to sign in-cluster certs. The Cilium values were updated to point Hubble at the new issuer via `hubble.tls.auto.method: certmanager`. ArgoCD's renders became deterministic again, and the homelab gained a reusable internal CA, useful for whatever future in-cluster service needs TLS.
 
 ## Validation, then auto-sync
 
@@ -176,7 +176,7 @@ After applying the manifest:
 kubectl get pods -A | grep -v Running | grep -v Completed
 ```
 
-returned nothing — no workload was broken by the sync. The Cilium pods were the same instances as before (the adoption didn't restart them), the Hubble certs got reissued by cert-manager, the diff settled clean.
+returned nothing: no workload was broken by the sync. The Cilium pods were the same instances as before (the adoption didn't restart them), the Hubble certs got reissued by cert-manager, the diff settled clean.
 
 I then enabled automated sync:
 
@@ -189,10 +189,10 @@ syncPolicy:
     - ServerSideApply=true
 ```
 
-`selfHeal: true` is safe — it patches existing resources back to spec, never deletes. `prune: false` is the line I will not cross. If I want to remove a Cilium resource I'll do it deliberately, not let ArgoCD do it for me.
+`selfHeal: true` is safe: it patches existing resources back to spec, never deletes. `prune: false` is the line I will not cross. If I want to remove a Cilium resource I'll do it deliberately, not let ArgoCD do it for me.
 
 ## Closing thoughts
 
-The pattern this article describes — adopt an existing Helm release under a GitOps tool by matching release name, namespace, and chart values — generalizes to any chart you didn't originally install via your GitOps system. Most "I installed this with the CLI / helm install" tools have an equivalent path. Worth knowing, because the alternative (tear down and reinstall) is risky for stateful or networking-critical components.
+The pattern this article describes (adopt an existing Helm release under a GitOps tool by matching release name, namespace, and chart values) generalizes to any chart you didn't originally install via your GitOps system. Most "I installed this with the CLI / helm install" tools have an equivalent path. Worth knowing, because the alternative (tear down and reinstall) is risky for stateful or networking-critical components.
 
 The unrecognized Secret was the only real snag, and the side effect of resolving it was an internal CA I had been meaning to set up anyway.

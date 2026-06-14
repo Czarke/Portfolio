@@ -9,7 +9,7 @@ I've been doing a pass through Tokyo DevOps and SRE job postings recently, and t
 1. **No project that uses AI** Plenty of postings list "experience with AI tools" as a nice-to-have. I use Claude heavily when I build things, but I don't have a project where AI is *part of the product.*
 2. **Thin alerting** My homelab had Prometheus and Grafana deployed, but no alerting. Time to solve that
 
-Listing "used AI to build my website" on a resume isn't meaningfully different from listing a language server, and it opens the door to the sceptical read: *this person is just vibe-coding their way through*. The signal I want to send is different — that I can build something that *uses* AI, reason about when an AI based tool is the right path, and when it isn't.
+Listing "used AI to build my website" on a resume isn't meaningfully different from listing a language server, and it opens the door to the sceptical read: *this person is just vibe-coding their way through*. The signal I want to send is different: that I can build something that *uses* AI, reason about when an AI based tool is the right path, and when it isn't.
 
 So: a single project that addresses both gaps. An AI-powered runbook generator triggered by Prometheus alerts.
 
@@ -19,7 +19,7 @@ The flow:
 
 1. A Prometheus alert fires (pod crashlooping, node out of memory, certificate expiring, etc.)
 2. Alertmanager sends a webhook to a service running in the cluster
-3. The service sends the alert context to Claude Haiku with a system prompt asking it to produce a runbook — likely causes, investigation commands, resolution steps
+3. The service sends the alert context to Claude Haiku with a system prompt asking it to produce a runbook: likely causes, investigation commands, resolution steps
 4. The generated runbook gets committed to a private GitHub repo
 5. A Discord notification fires with a link to the runbook
 
@@ -27,7 +27,7 @@ This gives me:
 - A genuine use case for AI in an SRE context (writing potentially useful ops docs automatically)
 - A reason to actually sit down and define alerting rules across the cluster
 - A working Discord notification stream so I notice when things break
-- A concrete artifact — a repo full of runbooks - pointing to the issues that I've resolved
+- A concrete artifact, a repo full of runbooks, pointing to the issues that I've resolved
 
 ## The service
 
@@ -62,7 +62,7 @@ A few specific decisions worth explaining:
 
 **Claude Haiku over Sonnet.** Honestly if this tool were being used in production environment, I definitely wouldn't use Haiku. That said, Haiku is ~10x cheaper than Sonnet, let alone Opus. For a showcase tool, the cheaper the better.
 
-**Once-per-alert generation.** Early on I had the service regenerate the runbook on every alert firing. That was wasteful — the same `PodCrashLooping` alert could fire dozens of times a day in a busy cluster if a service you don't care about is down, and the generated content barely changes. Now the service checks if a runbook file for that alert already exists in the repo; if so, it skips the Claude call and just sends a Discord ping linking to the existing runbook. New alerts still generate fresh runbooks.
+**Once-per-alert generation.** Early on I had the service regenerate the runbook on every alert firing. That was wasteful. The same `PodCrashLooping` alert could fire dozens of times a day in a busy cluster if a service you don't care about is down, and the generated content barely changes. Now the service checks if a runbook file for that alert already exists in the repo; if so, it skips the Claude call and just sends a Discord ping linking to the existing runbook. New alerts still generate fresh runbooks.
 
 **GitHub as the storage backend.** The obvious alternatives were a ConfigMap or a database. I'm also not receiving many alerts. On a much larger scale I would almost certainly not do this.
 
@@ -115,11 +115,11 @@ Once the pipeline was live, Discord immediately got a wall of alerts I wasn't ex
 - `etcdMembersDown`
 - `etcdInsufficientMembers`
 
-All of these are default alerts that ship with kube-prometheus-stack. None of them were real problems — they were artifacts of how my cluster is configured.
+All of these are default alerts that ship with kube-prometheus-stack. None of them were real problems. They were artifacts of how my cluster is configured.
 
 **KubeProxyDown** was the easiest to explain. My cluster uses [Cilium with kube-proxy replacement](https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/), so `kube-proxy` no longer exists. I disabled that ServiceMonitor in the Helm values.
 
-The other three were all related. `kubeadm` — the tool I used to bootstrap the cluster — configures `kube-controller-manager`, `kube-scheduler`, and `etcd` to bind their metrics endpoints to `127.0.0.1` by default. This is a defense-in-depth choice: only processes running on the node itself can reach those endpoints. But Prometheus runs in a pod, and pods can't hit the node's `127.0.0.1`. Since Prometheus can't scrape those targets, you get a steady drip of alerts.
+The other three were all related. `kubeadm` (the tool I used to bootstrap the cluster) configures `kube-controller-manager`, `kube-scheduler`, and `etcd` to bind their metrics endpoints to `127.0.0.1` by default. This is a defense-in-depth choice: only processes running on the node itself can reach those endpoints. But Prometheus runs in a pod, and pods can't hit the node's `127.0.0.1`. Since Prometheus can't scrape those targets, you get a steady drip of alerts.
 
 The fix was editing the static pod manifests under `/etc/kubernetes/manifests/` on the control plane node to change the binding from `127.0.0.1` to `0.0.0.0`:
 
@@ -134,14 +134,14 @@ sudo sed -i 's|--listen-metrics-urls=http://127.0.0.1:2381|--listen-metrics-urls
 
 `kubelet` watches those files and automatically recreates the pods when they change. The `etcd` restart briefly takes the Kubernetes API offline (maybe 15 seconds on a single-control-plane cluster) but everything came back clean.
 
-This is worth thinking about from a security perspective. Changing the binding to `0.0.0.0` means any pod in the cluster can now reach those metrics endpoints, not just the node itself. For a homelab with a single tenant and no untrusted workloads, the risk is low — the endpoints still enforce TLS auth, and an attacker with pod execution already has bigger problems. For a production multi-tenant cluster, the right answer is a [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) restricting access to the Prometheus pod. I'll add one when I have a reason to.
+This is worth thinking about from a security perspective. Changing the binding to `0.0.0.0` means any pod in the cluster can now reach those metrics endpoints, not just the node itself. For a homelab with a single tenant and no untrusted workloads, the risk is low. The endpoints still enforce TLS auth, and an attacker with pod execution already has bigger problems. For a production multi-tenant cluster, the right answer is a [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) restricting access to the Prometheus pod. I'll add one when I have a reason to.
 
 ## What this actually gives me
 
 Now that the pipeline works, when something breaks on the cluster:
 
 1. Alertmanager groups related alerts, waits 30 seconds, then POSTs a webhook
-2. My service checks if a runbook for this alert exists already — if yes, it sends a Discord alert and stops. If not, it calls Claude, gets back a markdown runbook with likely causes and investigation commands, commits it to [`homelab-runbooks`](https://github.com/Czarke), and sends a Discord alert
+2. My service checks if a runbook for this alert exists already. If yes, it sends a Discord alert and stops. If not, it calls Claude, gets back a markdown runbook with likely causes and investigation commands, commits it to [`homelab-runbooks`](https://github.com/Czarke), and sends a Discord alert
 3. I get a Discord ping with a link, click through, and read AI-generated starting points for debugging
 
 For persistent alerts I get a reminder every hour (Alertmanager's `repeat_interval`), but the runbook itself is only generated once. This keeps both the token cost and the Git history bounded.

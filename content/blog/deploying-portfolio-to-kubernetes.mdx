@@ -1,16 +1,16 @@
 ---
 title: "Deploying this site to Kubernetes"
 date: "2026-04-07"
-description: "Containerizing a Next.js app and setting up a full GitOps CI/CD pipeline with GitHub Actions, GHCR, and ArgoCD — running alongside the existing AWS Amplify deployment."
+description: "Containerizing a Next.js app and setting up a full GitOps CI/CD pipeline with GitHub Actions, GHCR, and ArgoCD, running alongside the existing AWS Amplify deployment."
 ---
 
-This site runs on AWS Amplify. Amplify watches the `main` branch, builds on push, and handles the deployment automatically — it's a great experience for a Next.js app (especially compared to using Buddy for my first website years ago). But I wanted to also deploy it to the homelab Kubernetes cluster, both to have it running there and to wire up a real CI/CD pipeline from scratch.
+This site runs on AWS Amplify. Amplify watches the `main` branch, builds on push, and handles the deployment automatically. It's a great experience for a Next.js app (especially compared to using Buddy for my first website years ago). But I wanted to also deploy it to the homelab Kubernetes cluster, both to have it running there and to wire up a real CI/CD pipeline from scratch.
 
-The goal: push to `main`, have the site automatically built, containerized, and deployed to the cluster — without touching the publicly available site on Amplify.
+The goal: push to `main`, have the site automatically built, containerized, and deployed to the cluster, without touching the publicly available site on Amplify.
 
 ## Containerizing Next.js
 
-Next.js has a `standalone` output mode that produces a minimal self-contained build — a `server.js` file plus the required node modules.
+Next.js has a `standalone` output mode that produces a minimal self-contained build: a `server.js` file plus the required node modules.
 
 Just a couple lines in `next.config.ts`:
 
@@ -62,7 +62,7 @@ The workflow lives in `.github/workflows/deploy.yml` and has two jobs.
 
 **Job 1: build and push**
 
-Builds the Docker image and pushes it to GitHub Container Registry with two tags — `latest` and the full commit SHA:
+Builds the Docker image and pushes it to GitHub Container Registry with two tags: `latest` and the full commit SHA:
 
 ```yaml
 - name: Build and push
@@ -77,11 +77,11 @@ Builds the Docker image and pushes it to GitHub Container Registry with two tags
       ghcr.io/czarke/portfolio:${{ github.sha }}
 ```
 
-The SHA tag is what actually gets deployed — `latest` is convenient for pulling manually but the cluster always runs a specific SHA so you know exactly what's running.
+The SHA tag is what actually gets deployed. `latest` is convenient for pulling manually but the cluster always runs a specific SHA so you know exactly what's running.
 
 **Job 2: update homelab-infra**
 
-Checks out the `homelab-infra` repo and commits a one-line change — the new image tag in `deployment.yaml`:
+Checks out the `homelab-infra` repo and commits a one-line change: the new image tag in `deployment.yaml`:
 
 ```yaml
 - name: Update image tag
@@ -90,7 +90,7 @@ Checks out the `homelab-infra` repo and commits a one-line change — the new im
       manifests/portfolio/deployment.yaml
 ```
 
-This is the GitOps part. The `homelab-infra` repo is the source of truth for cluster state — ArgoCD watches it and reconciles. By committing the new tag there, ArgoCD detects the change and triggers a rollout automatically.
+This is the GitOps part. The `homelab-infra` repo is the source of truth for cluster state. ArgoCD watches it and reconciles. By committing the new tag there, ArgoCD detects the change and triggers a rollout automatically.
 
 ## Kubernetes manifests
 
@@ -151,6 +151,6 @@ git push main
   → cluster pulls new image, rolls out new pod
 ```
 
-End to end it mirrors what Amplify does — push and the new version is live. The difference is the mechanism: Amplify is managed infrastructure, this is a pipeline I own and can observe at every step.
+End to end it mirrors what Amplify does. Push and the new version is live. The difference is the mechanism: Amplify is managed infrastructure, this is a pipeline I own and can observe at every step.
 
-The site is accessible at `portfolio.homelab.seanpatterson.me` over Tailscale. It's not public — the cluster sits behind NAT on a dynamic IP — but it's the same app as `seanpatterson.me`, just built and deployed through a pipeline I put together.
+The site is accessible at `portfolio.homelab.seanpatterson.me` over Tailscale. It's not public (the cluster sits behind NAT on a dynamic IP) but it's the same app as `seanpatterson.me`, just built and deployed through a pipeline I put together.
